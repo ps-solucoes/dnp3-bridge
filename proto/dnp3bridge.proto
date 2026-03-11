@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package dnp3bridge.v1;
+
+option cc_enable_arenas = true;
+
+enum PointQuality {
+    POINT_QUALITY_GOOD      = 0;
+    POINT_QUALITY_UNCERTAIN = 1;
+    POINT_QUALITY_BAD       = 2;
+    POINT_QUALITY_RESTART   = 3;
+}
+
+enum OutstationState {
+    OUTSTATION_STATE_UNKNOWN      = 0;
+    OUTSTATION_STATE_CONNECTED    = 1;
+    OUTSTATION_STATE_DISCONNECTED = 2;
+}
+
+enum CommandType {
+    COMMAND_TYPE_UNSPECIFIED     = 0;
+    COMMAND_TYPE_CROB            = 1;
+    COMMAND_TYPE_ANALOG_INT16    = 2;
+    COMMAND_TYPE_ANALOG_INT32    = 3;
+    COMMAND_TYPE_ANALOG_FLOAT32  = 4;
+    COMMAND_TYPE_ANALOG_DOUBLE64 = 5;
+}
+
+enum CrobOperationType {
+    CROB_OPERATION_NUL       = 0;
+    CROB_OPERATION_PULSE_ON  = 1;
+    CROB_OPERATION_PULSE_OFF = 2;
+    CROB_OPERATION_LATCH_ON  = 3;
+    CROB_OPERATION_LATCH_OFF = 4;
+}
+
+enum CommandResultStatus {
+    COMMAND_RESULT_SUCCESS         = 0;
+    COMMAND_RESULT_TIMEOUT         = 1;
+    COMMAND_RESULT_NO_SELECT       = 2;
+    COMMAND_RESULT_FORMAT_ERROR    = 3;
+    COMMAND_RESULT_NOT_SUPPORTED   = 4;
+    COMMAND_RESULT_ALREADY_ACTIVE  = 5;
+    COMMAND_RESULT_HARDWARE_ERROR  = 6;
+    COMMAND_RESULT_LOCAL           = 7;
+    COMMAND_RESULT_TOO_MANY_OPS    = 8;
+    COMMAND_RESULT_NOT_AUTHORIZED  = 9;
+    COMMAND_RESULT_DOWNSTREAM_FAIL = 10;
+}
+
+message AnalogPoint {
+    uint32       index   = 1;
+    double       value   = 2;
+    PointQuality quality = 3;
+}
+
+message BinaryPoint {
+    uint32       index   = 1;
+    bool         value   = 2;
+    PointQuality quality = 3;
+}
+
+message CounterPoint {
+    uint32       index   = 1;
+    uint32       value   = 2;
+    PointQuality quality = 3;
+}
+
+message UpdateRequest {
+    repeated AnalogPoint  analogs  = 1;
+    repeated BinaryPoint  binaries = 2;
+    repeated CounterPoint counters = 3;
+}
+
+message UpdateResponse {
+    bool   success = 1;
+    string message = 2;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+    OutstationState state                    = 1;
+    uint64          last_update_timestamp_ms = 2;
+}
+
+message CrobCommand {
+    CrobOperationType operation = 1;
+    uint32 count       = 2;
+    uint32 on_time_ms  = 3;
+    uint32 off_time_ms = 4;
+}
+
+message CommandRequest {
+    uint64      command_id   = 1;
+    uint32      point_index  = 2;
+    CommandType command_type = 3;
+    oneof payload {
+        CrobCommand crob         = 4;
+        double      analog_value = 5;
+    }
+}
+
+message CommandResponse {
+    uint64              command_id = 1;
+    CommandResultStatus status     = 2;
+}
+
+message StreamCommandsRequest {}
+
+service BridgeService {
+    rpc UpdatePoints(UpdateRequest)  returns (UpdateResponse);
+    rpc GetStatus(StatusRequest)     returns (StatusResponse);
+    rpc StreamCommands(StreamCommandsRequest) returns (stream CommandRequest);
+    rpc RespondToCommand(CommandResponse) returns (UpdateResponse);
+}

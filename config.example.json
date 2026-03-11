@@ -1,0 +1,9 @@
+{
+    "grpc_listen_address": "0.0.0.0:50051",
+    "dnp3_channel_host": "0.0.0.0",
+    "dnp3_channel_port": 20000,
+    "dnp3_local_address": 1024,
+    "dnp3_remote_address": 1,
+    "log_level": "info",
+    "command_timeout_ms": 3000
+}
