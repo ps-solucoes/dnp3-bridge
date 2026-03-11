@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgrpc++-dev \
+            libprotobuf-dev \
+            protobuf-compiler-grpc
+
+      - name: Configure
+        run: cmake --preset dev -Wno-dev
+
+      - name: Build
+        run: cmake --build --preset dev -- -j$(nproc)
+
+      - name: Test
+        run: ctest --test-dir build/debug --output-on-failure

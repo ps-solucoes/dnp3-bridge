@@ -31,11 +31,17 @@ FetchContent_Declare(
     GIT_TAG        v3.11.3
 )
 
+FetchContent_Declare(
+    doctest
+    GIT_REPOSITORY https://github.com/doctest/doctest.git
+    GIT_TAG        v2.4.11
+)
+
 set(DNP3_DEMOS OFF CACHE BOOL "" FORCE)
 set(DNP3_TESTS OFF CACHE BOOL "" FORCE)
 set(DNP3_TLS   OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(opendnp3 nlohmann_json)
+FetchContent_MakeAvailable(opendnp3 nlohmann_json doctest)
 
 # opendnp3 3.1.2 bundles an old ASIO incompatible with C++20+.
 # Override the standard at the target level to force C++14 for opendnp3.
@@ -104,3 +110,41 @@ target_link_libraries(dnp3-bridge PRIVATE
     opendnp3
     nlohmann_json::nlohmann_json
 )
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+enable_testing()
+
+add_executable(dnp3-bridge-tests
+    tests/test_main.cpp
+    tests/test_command_dispatcher.cpp
+    tests/test_config_loader.cpp
+    tests/test_bridge.cpp
+    tests/test_point_map.cpp
+    # Compile source files under test (excluding main.cpp which has its own main)
+    src/config/ConfigLoader.cpp
+    src/dnp3/CommandDispatcher.cpp
+    src/dnp3/PointMap.cpp
+    src/dnp3/OutstationManager.cpp
+    src/dnp3/ForwardingCommandHandler.cpp
+    src/bridge/Bridge.cpp
+    src/grpc/BridgeServiceImpl.cpp
+    src/grpc/GrpcServer.cpp
+    ${PROTO_GENERATED_SRCS}
+)
+
+target_include_directories(dnp3-bridge-tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${PROTO_OUT}"
+)
+
+target_link_libraries(dnp3-bridge-tests PRIVATE
+    doctest::doctest
+    gRPC::grpc++
+    protobuf::libprotobuf
+    opendnp3
+    nlohmann_json::nlohmann_json
+)
+
+add_test(NAME unit-tests COMMAND dnp3-bridge-tests)
