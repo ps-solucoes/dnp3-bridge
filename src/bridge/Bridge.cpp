@@ -67,8 +67,6 @@ void Bridge::flushLoop() {
                     outstation_.updateAnalog(u.index, u.value);
                 } else if constexpr (std::is_same_v<T, BinaryUpdate>) {
                     outstation_.updateBinary(u.index, u.value);
-                } else if constexpr (std::is_same_v<T, CounterUpdate>) {
-                    outstation_.updateCounter(u.index, u.value);
                 }
             }, update);
 

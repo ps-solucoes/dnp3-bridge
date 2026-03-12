@@ -51,7 +51,6 @@ TEST_CASE("Bridge lifecycle") {
 
         bridge.applyUpdate(AnalogUpdate{.index = 0, .value = 3.14});
         bridge.applyUpdate(BinaryUpdate{.index = 1, .value = true});
-        bridge.applyUpdate(CounterUpdate{.index = 2, .value = 42});
 
         // Give the flush thread time to drain the queue.
         std::this_thread::sleep_for(50ms);

@@ -27,7 +27,6 @@ public:
 
     void updateAnalog(std::uint16_t index, double value);
     void updateBinary(std::uint16_t index, bool value);
-    void updateCounter(std::uint16_t index, std::uint32_t value);
 
     [[nodiscard]] bool isConnected() const;
 

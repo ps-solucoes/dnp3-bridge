@@ -60,13 +60,6 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
         });
     }
 
-    for (const auto& c : request->counters()) {
-        bridge_.applyUpdate(bridge::CounterUpdate{
-            .index = static_cast<std::uint16_t>(c.index()),
-            .value = static_cast<std::uint32_t>(c.value()),
-        });
-    }
-
     response->set_success(true);
     response->set_message("accepted");
     return ::grpc::Status::OK;

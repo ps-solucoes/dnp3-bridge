@@ -1,6 +1,7 @@
 #include "dnp3/OutstationManager.hpp"
 #include "dnp3/ForwardingCommandHandler.hpp"
 
+#include <opendnp3/outstation/DatabaseConfig.h>
 #include <opendnp3/outstation/DefaultOutstationApplication.h>
 #include <opendnp3/outstation/OutstationStackConfig.h>
 #include <opendnp3/outstation/UpdateBuilder.h>
@@ -29,9 +30,46 @@ void OutstationManager::start() {
         nullptr
     );
 
-    opendnp3::OutstationStackConfig stack_cfg(
-        opendnp3::DatabaseConfig(10)
-    );
+    opendnp3::DatabaseConfig db_config;
+
+    // Binary Input: 11 points (indices 0-10), all Class 1
+    for (uint16_t i = 0; i <= 10; ++i) {
+        auto& pt = db_config.binary_input[i];
+        pt.clazz = opendnp3::PointClass::Class1;
+    }
+
+    // Binary Output Status: 20 points (indices 0-19)
+    //   0-11: Class 1, 12-19: Class 0 (static only, no event reporting)
+    for (uint16_t i = 0; i <= 11; ++i) {
+        auto& pt = db_config.binary_output_status[i];
+        pt.clazz = opendnp3::PointClass::Class1;
+    }
+    for (uint16_t i = 12; i <= 19; ++i) {
+        auto& pt = db_config.binary_output_status[i];
+        pt.clazz = opendnp3::PointClass::Class0;
+    }
+
+    // Analog Input: 21 points (indices 0-20)
+    //   0-16: Class 0 (static only), 17-20: Class 1
+    for (uint16_t i = 0; i <= 16; ++i) {
+        auto& pt = db_config.analog_input[i];
+        pt.clazz = opendnp3::PointClass::Class0;
+    }
+    for (uint16_t i = 17; i <= 20; ++i) {
+        auto& pt = db_config.analog_input[i];
+        pt.clazz = opendnp3::PointClass::Class1;
+    }
+
+    // Analog Output Status: 5 points (indices 0-4), all Class 2
+    for (uint16_t i = 0; i <= 4; ++i) {
+        auto& pt = db_config.analog_output_status[i];
+        pt.clazz = opendnp3::PointClass::Class2;
+    }
+
+    // All other types (double binary, counter, frozen counter,
+    // time and interval, octet string) remain empty.
+
+    opendnp3::OutstationStackConfig stack_cfg(std::move(db_config));
     stack_cfg.outstation.params.allowUnsolicited = true;
     stack_cfg.link.LocalAddr  = cfg_.dnp3_local_address;
     stack_cfg.link.RemoteAddr = cfg_.dnp3_remote_address;
@@ -72,13 +110,6 @@ void OutstationManager::updateBinary(std::uint16_t index, bool value) {
     if (!outstation_) return;
     opendnp3::UpdateBuilder builder;
     builder.Update(opendnp3::Binary(value), index);
-    outstation_->Apply(builder.Build());
-}
-
-void OutstationManager::updateCounter(std::uint16_t index, std::uint32_t value) {
-    if (!outstation_) return;
-    opendnp3::UpdateBuilder builder;
-    builder.Update(opendnp3::Counter(value), index);
     outstation_->Apply(builder.Build());
 }
 

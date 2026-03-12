@@ -15,11 +15,6 @@ struct BinaryUpdate {
     bool          value;
 };
 
-struct CounterUpdate {
-    std::uint16_t index;
-    std::uint32_t value;
-};
-
-using PointUpdate = std::variant<AnalogUpdate, BinaryUpdate, CounterUpdate>;
+using PointUpdate = std::variant<AnalogUpdate, BinaryUpdate>;
 
 } // namespace dnp3bridge::bridge
