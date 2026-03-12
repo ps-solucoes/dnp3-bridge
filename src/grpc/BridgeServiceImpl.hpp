@@ -4,6 +4,10 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+
 namespace dnp3bridge::bridge {
 class Bridge;
 }
@@ -44,6 +48,7 @@ private:
     bridge::Bridge&            bridge_;
     dnp3::OutstationManager&   outstation_;
     dnp3::CommandDispatcher&   dispatcher_;
+    std::atomic<uint64_t>      last_update_ms_{0};
 };
 
 } // namespace dnp3bridge::grpc

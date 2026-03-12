@@ -60,6 +60,12 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
         });
     }
 
+    auto now_ms = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    last_update_ms_.store(now_ms, std::memory_order_relaxed);
+
     response->set_success(true);
     response->set_message("accepted");
     return ::grpc::Status::OK;
@@ -76,12 +82,8 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
         response->set_state(dnp3bridge::v1::OUTSTATION_STATE_DISCONNECTED);
     }
 
-    // TODO: Track actual last-update timestamp.
-    auto now = std::chrono::system_clock::now();
-    auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
-                   now.time_since_epoch())
-                   .count();
-    response->set_last_update_timestamp_ms(static_cast<std::uint64_t>(ms));
+    response->set_last_update_timestamp_ms(
+        last_update_ms_.load(std::memory_order_relaxed));
 
     return ::grpc::Status::OK;
 }
