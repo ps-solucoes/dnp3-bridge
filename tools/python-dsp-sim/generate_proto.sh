@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Generate Python gRPC stubs from the proto file.
-# Run from the repository root: bash python/generate_proto.sh
+# Run from the repository root: bash tools/python-dsp-sim/generate_proto.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OUT_DIR="$SCRIPT_DIR/generated"
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
 

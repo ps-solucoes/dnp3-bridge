@@ -112,17 +112,11 @@ target_link_libraries(dnp3-bridge PRIVATE
 )
 
 # ---------------------------------------------------------------------------
-# Tests
+# Tests — shared sources (everything except main.cpp)
 # ---------------------------------------------------------------------------
 enable_testing()
 
-add_executable(dnp3-bridge-tests
-    tests/test_main.cpp
-    tests/test_command_dispatcher.cpp
-    tests/test_config_loader.cpp
-    tests/test_bridge.cpp
-    tests/test_point_map.cpp
-    # Compile source files under test (excluding main.cpp which has its own main)
+set(BRIDGE_LIB_SRCS
     src/config/ConfigLoader.cpp
     src/dnp3/CommandDispatcher.cpp
     src/dnp3/PointMap.cpp
@@ -134,12 +128,7 @@ add_executable(dnp3-bridge-tests
     ${PROTO_GENERATED_SRCS}
 )
 
-target_include_directories(dnp3-bridge-tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/src"
-    "${PROTO_OUT}"
-)
-
-target_link_libraries(dnp3-bridge-tests PRIVATE
+set(BRIDGE_TEST_LIBS
     doctest::doctest
     gRPC::grpc++
     protobuf::libprotobuf
@@ -147,4 +136,51 @@ target_link_libraries(dnp3-bridge-tests PRIVATE
     nlohmann_json::nlohmann_json
 )
 
+# Unit tests
+add_executable(dnp3-bridge-tests
+    tests/test_main.cpp
+    tests/test_command_dispatcher.cpp
+    tests/test_config_loader.cpp
+    tests/test_bridge.cpp
+    tests/test_point_map.cpp
+    ${BRIDGE_LIB_SRCS}
+)
+
+target_include_directories(dnp3-bridge-tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${PROTO_OUT}"
+)
+
+target_link_libraries(dnp3-bridge-tests PRIVATE ${BRIDGE_TEST_LIBS})
+
 add_test(NAME unit-tests COMMAND dnp3-bridge-tests)
+
+# Integration tests (full stack: gRPC + DNP3 master + bridge)
+add_executable(dnp3-bridge-integration-tests
+    tests/test_main.cpp
+    tests/test_integration.cpp
+    ${BRIDGE_LIB_SRCS}
+)
+
+target_include_directories(dnp3-bridge-integration-tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${PROTO_OUT}"
+)
+
+target_link_libraries(dnp3-bridge-integration-tests PRIVATE ${BRIDGE_TEST_LIBS})
+
+add_test(NAME integration-tests COMMAND dnp3-bridge-integration-tests)
+
+# ---------------------------------------------------------------------------
+# Tools — DNP3 Master Simulator
+# ---------------------------------------------------------------------------
+add_executable(dnp3-master-sim
+    tools/dnp3-master-sim/main.cpp
+    tools/dnp3-master-sim/SoeHandler.cpp
+)
+
+target_include_directories(dnp3-master-sim PRIVATE
+    "${CMAKE_SOURCE_DIR}/tools/dnp3-master-sim"
+)
+
+target_link_libraries(dnp3-master-sim PRIVATE opendnp3)

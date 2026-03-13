@@ -75,7 +75,19 @@ opendnp3::CommandStatus CommandDispatcher::dispatch(dnp3bridge::v1::CommandReque
             pending_.erase(command_id);
             return opendnp3::CommandStatus::NOT_SUPPORTED;
         }
-        if (!active_writer_->Write(request)) {
+        try {
+            if (!active_writer_->Write(request)) {
+                std::lock_guard plock{pending_mutex_};
+                pending_.erase(command_id);
+                return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[CommandDispatcher] Write failed: " << e.what() << "\n";
+            std::lock_guard plock{pending_mutex_};
+            pending_.erase(command_id);
+            return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
+        } catch (...) {
+            std::cerr << "[CommandDispatcher] Write failed with unknown exception\n";
             std::lock_guard plock{pending_mutex_};
             pending_.erase(command_id);
             return opendnp3::CommandStatus::DOWNSTREAM_FAIL;

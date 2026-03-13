@@ -2,6 +2,8 @@
 
 #include <opendnp3/gen/OperationType.h>
 
+#include <iostream>
+
 namespace dnp3bridge::dnp3 {
 
 namespace {
@@ -41,17 +43,25 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
     const opendnp3::ControlRelayOutputBlock& command, uint16_t index,
     opendnp3::IUpdateHandler& /*handler*/, opendnp3::OperateType /*opType*/)
 {
-    dnp3bridge::v1::CommandRequest request;
-    request.set_point_index(index);
-    request.set_command_type(dnp3bridge::v1::COMMAND_TYPE_CROB);
+    try {
+        dnp3bridge::v1::CommandRequest request;
+        request.set_point_index(index);
+        request.set_command_type(dnp3bridge::v1::COMMAND_TYPE_CROB);
 
-    auto* crob = request.mutable_crob();
-    crob->set_operation(toCrobOperation(command.opType));
-    crob->set_count(command.count);
-    crob->set_on_time_ms(command.onTimeMS);
-    crob->set_off_time_ms(command.offTimeMS);
+        auto* crob = request.mutable_crob();
+        crob->set_operation(toCrobOperation(command.opType));
+        crob->set_count(command.count);
+        crob->set_on_time_ms(command.onTimeMS);
+        crob->set_off_time_ms(command.offTimeMS);
 
-    return dispatcher_.dispatch(std::move(request));
+        return dispatcher_.dispatch(std::move(request));
+    } catch (const std::exception& e) {
+        std::cerr << "[ForwardingCommandHandler] Operate(CROB) failed: " << e.what() << "\n";
+        return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
+    } catch (...) {
+        std::cerr << "[ForwardingCommandHandler] Operate(CROB) failed with unknown exception\n";
+        return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -133,12 +143,20 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
 opendnp3::CommandStatus ForwardingCommandHandler::dispatchAnalog(
     uint16_t index, double value, dnp3bridge::v1::CommandType type)
 {
-    dnp3bridge::v1::CommandRequest request;
-    request.set_point_index(index);
-    request.set_command_type(type);
-    request.set_analog_value(value);
+    try {
+        dnp3bridge::v1::CommandRequest request;
+        request.set_point_index(index);
+        request.set_command_type(type);
+        request.set_analog_value(value);
 
-    return dispatcher_.dispatch(std::move(request));
+        return dispatcher_.dispatch(std::move(request));
+    } catch (const std::exception& e) {
+        std::cerr << "[ForwardingCommandHandler] Operate(Analog) failed: " << e.what() << "\n";
+        return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
+    } catch (...) {
+        std::cerr << "[ForwardingCommandHandler] Operate(Analog) failed with unknown exception\n";
+        return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
+    }
 }
 
 } // namespace dnp3bridge::dnp3

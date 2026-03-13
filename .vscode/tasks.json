@@ -1,0 +1,89 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build (Debug)",
+            "type": "shell",
+            "command": "cmake --build --preset dev",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Run Bridge",
+            "type": "shell",
+            "command": "./build/debug/dnp3-bridge",
+            "dependsOn": "Build (Debug)",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "dnp3-bridge"
+            }
+        },
+        {
+            "label": "Run Python DSP Simulator",
+            "type": "shell",
+            "command": "tools/python-dsp-sim/.venv/bin/python3 tools/python-dsp-sim/dsp_sim.py",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "dnp3-bridge"
+            }
+        },
+        {
+            "label": "Run DNP3 Master Simulator",
+            "type": "shell",
+            "command": "./build/debug/dnp3-master-sim",
+            "dependsOn": "Build (Debug)",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "dnp3-bridge"
+            }
+        },
+        {
+            "label": "Run All (Bridge + Python + Master)",
+            "dependsOn": [
+                "Run Bridge",
+                "Run Python DSP Simulator",
+                "Run DNP3 Master Simulator"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Unit Tests",
+            "type": "shell",
+            "command": "./build/debug/dnp3-bridge-tests -s",
+            "dependsOn": "Build (Debug)",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Run Integration Tests",
+            "type": "shell",
+            "command": "./build/debug/dnp3-bridge-integration-tests -s",
+            "dependsOn": "Build (Debug)",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        }
+    ]
+}

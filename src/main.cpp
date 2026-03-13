@@ -36,6 +36,11 @@ int main(int argc, char* argv[]) {
     }
     auto cfg = std::move(*cfg_result);
 
+    // Ignore SIGPIPE — gRPC stream writes to a disconnected client must not
+    // kill the process.  gRPC normally masks this, but the opendnp3 threads
+    // that call dispatch() may not inherit that mask.
+    std::signal(SIGPIPE, SIG_IGN);
+
     // Install signal handlers.
     std::signal(SIGINT,  signal_handler);
     std::signal(SIGTERM, signal_handler);
