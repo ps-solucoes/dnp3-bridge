@@ -1,7 +1,9 @@
 #pragma once
 
+#include "DataModel.hpp"
+
+#include <functional>
 #include <memory>
-#include <mutex>
 
 #include <opendnp3/master/ISOEHandler.h>
 
@@ -10,7 +12,9 @@ namespace dnp3sim {
 class SoeHandler final : public opendnp3::ISOEHandler
 {
 public:
-    static std::shared_ptr<opendnp3::ISOEHandler> Create();
+    SoeHandler(DataModel& model, std::function<void()> notify);
+
+    static std::shared_ptr<opendnp3::ISOEHandler> Create(DataModel& model, std::function<void()> notify);
 
     void BeginFragment(const opendnp3::ResponseInfo& info) override;
     void EndFragment(const opendnp3::ResponseInfo& info) override;
@@ -29,7 +33,8 @@ public:
     void Process(const opendnp3::HeaderInfo& info, const opendnp3::ICollection<opendnp3::DNPTime>& values) override;
 
 private:
-    std::mutex mutex_;
+    DataModel& model_;
+    std::function<void()> notify_;
 };
 
 } // namespace dnp3sim

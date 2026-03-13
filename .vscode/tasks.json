@@ -29,7 +29,19 @@
             }
         },
         {
-            "label": "Run Python DSP Simulator",
+            "label": "Run Python DSP Simulator (TUI)",
+            "type": "shell",
+            "command": "tools/python-dsp-sim/.venv/bin/python3 tools/python-dsp-sim/tui.py",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "dnp3-bridge"
+            }
+        },
+        {
+            "label": "Run Python DSP Simulator (CLI)",
             "type": "shell",
             "command": "tools/python-dsp-sim/.venv/bin/python3 tools/python-dsp-sim/dsp_sim.py",
             "isBackground": true,
@@ -57,7 +69,7 @@
             "label": "Run All (Bridge + Python + Master)",
             "dependsOn": [
                 "Run Bridge",
-                "Run Python DSP Simulator",
+                "Run Python DSP Simulator (TUI)",
                 "Run DNP3 Master Simulator"
             ],
             "dependsOrder": "sequence",

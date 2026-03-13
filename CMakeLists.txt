@@ -43,11 +43,22 @@ FetchContent_Declare(
     GIT_TAG        v1.15.1
 )
 
+FetchContent_Declare(
+    ftxui
+    GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+    GIT_TAG        v6.1.9
+)
+
 set(DNP3_DEMOS OFF CACHE BOOL "" FORCE)
 set(DNP3_TESTS OFF CACHE BOOL "" FORCE)
 set(DNP3_TLS   OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(opendnp3 nlohmann_json doctest spdlog)
+set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(opendnp3 nlohmann_json doctest spdlog ftxui)
 
 # opendnp3 3.1.2 bundles an old ASIO incompatible with C++20+.
 # Override the standard at the target level to force C++14 for opendnp3.
@@ -185,10 +196,16 @@ add_test(NAME integration-tests COMMAND dnp3-bridge-integration-tests)
 add_executable(dnp3-master-sim
     tools/dnp3-master-sim/main.cpp
     tools/dnp3-master-sim/SoeHandler.cpp
+    tools/dnp3-master-sim/Ui.cpp
 )
 
 target_include_directories(dnp3-master-sim PRIVATE
     "${CMAKE_SOURCE_DIR}/tools/dnp3-master-sim"
 )
 
-target_link_libraries(dnp3-master-sim PRIVATE opendnp3)
+target_link_libraries(dnp3-master-sim PRIVATE
+    opendnp3
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
+)
