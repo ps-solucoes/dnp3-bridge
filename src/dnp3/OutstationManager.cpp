@@ -6,7 +6,7 @@
 #include <opendnp3/outstation/OutstationStackConfig.h>
 #include <opendnp3/outstation/UpdateBuilder.h>
 
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace dnp3bridge::dnp3 {
 
@@ -21,6 +21,7 @@ OutstationManager::~OutstationManager() {
 
 void OutstationManager::start() {
     manager_ = std::make_unique<opendnp3::DNP3Manager>(2);
+    spdlog::debug("DNP3Manager created with 2 threads");
 
     channel_ = manager_->AddTCPServer(
         "server",
@@ -29,6 +30,7 @@ void OutstationManager::start() {
         opendnp3::IPEndpoint(cfg_.dnp3_channel_host, cfg_.dnp3_channel_port),
         nullptr
     );
+    spdlog::debug("TCP server channel created");
 
     opendnp3::DatabaseConfig db_config;
 
@@ -69,6 +71,8 @@ void OutstationManager::start() {
     // All other types (double binary, counter, frozen counter,
     // time and interval, octet string) remain empty.
 
+    spdlog::debug("Outstation database configured: 11 BI, 20 BO, 21 AI, 5 AO");
+
     opendnp3::OutstationStackConfig stack_cfg(std::move(db_config));
     stack_cfg.outstation.params.allowUnsolicited = true;
     stack_cfg.link.LocalAddr  = cfg_.dnp3_local_address;
@@ -84,8 +88,7 @@ void OutstationManager::start() {
     outstation_->Enable();
     connected_ = true;
 
-    std::cerr << "[OutstationManager] Started on "
-              << cfg_.dnp3_channel_host << ":" << cfg_.dnp3_channel_port << "\n";
+    spdlog::info("Outstation started on {}:{}", cfg_.dnp3_channel_host, cfg_.dnp3_channel_port);
 }
 
 void OutstationManager::shutdown() {
@@ -95,12 +98,13 @@ void OutstationManager::shutdown() {
     if (manager_) {
         manager_->Shutdown();
         manager_.reset();
-        std::cerr << "[OutstationManager] Shutdown complete\n";
+        spdlog::info("Outstation shutdown complete");
     }
 }
 
 void OutstationManager::updateAnalog(std::uint16_t index, double value) {
     if (!outstation_) return;
+    spdlog::trace("Update analog[{}] = {}", index, value);
     opendnp3::UpdateBuilder builder;
     builder.Update(opendnp3::Analog(value), index);
     outstation_->Apply(builder.Build());
@@ -108,6 +112,7 @@ void OutstationManager::updateAnalog(std::uint16_t index, double value) {
 
 void OutstationManager::updateBinary(std::uint16_t index, bool value) {
     if (!outstation_) return;
+    spdlog::trace("Update binary[{}] = {}", index, value);
     opendnp3::UpdateBuilder builder;
     builder.Update(opendnp3::Binary(value), index);
     outstation_->Apply(builder.Build());

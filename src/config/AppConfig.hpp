@@ -12,6 +12,9 @@ struct AppConfig {
     std::uint16_t dnp3_local_address = 1024;
     std::uint16_t dnp3_remote_address = 1;
     std::string   log_level           = "info";
+    std::string   log_file;  // empty = no file logging
+    std::uint32_t log_max_size_mb     = 5;
+    std::uint32_t log_max_files       = 3;
     std::uint32_t command_timeout_ms  = 3000;
 };
 

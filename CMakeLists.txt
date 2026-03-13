@@ -37,11 +37,17 @@ FetchContent_Declare(
     GIT_TAG        v2.4.11
 )
 
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG        v1.15.1
+)
+
 set(DNP3_DEMOS OFF CACHE BOOL "" FORCE)
 set(DNP3_TESTS OFF CACHE BOOL "" FORCE)
 set(DNP3_TLS   OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(opendnp3 nlohmann_json doctest)
+FetchContent_MakeAvailable(opendnp3 nlohmann_json doctest spdlog)
 
 # opendnp3 3.1.2 bundles an old ASIO incompatible with C++20+.
 # Override the standard at the target level to force C++14 for opendnp3.
@@ -109,6 +115,7 @@ target_link_libraries(dnp3-bridge PRIVATE
     protobuf::libprotobuf
     opendnp3
     nlohmann_json::nlohmann_json
+    spdlog::spdlog
 )
 
 # ---------------------------------------------------------------------------
@@ -134,6 +141,7 @@ set(BRIDGE_TEST_LIBS
     protobuf::libprotobuf
     opendnp3
     nlohmann_json::nlohmann_json
+    spdlog::spdlog
 )
 
 # Unit tests

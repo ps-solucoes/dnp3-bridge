@@ -7,7 +7,7 @@
 #include <opendnp3/gen/CommandStatus.h>
 
 #include <chrono>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <thread>
 
 namespace dnp3bridge::grpc {
@@ -46,7 +46,11 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
     const dnp3bridge::v1::UpdateRequest* request,
     dnp3bridge::v1::UpdateResponse* response)
 {
+    spdlog::debug("UpdatePoints: {} analogs, {} binaries",
+                  request->analogs_size(), request->binaries_size());
+
     for (const auto& a : request->analogs()) {
+        spdlog::trace("  Analog update: index={} value={}", a.index(), a.value());
         bridge_.applyUpdate(bridge::AnalogUpdate{
             .index = static_cast<std::uint16_t>(a.index()),
             .value = a.value(),
@@ -54,6 +58,7 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
     }
 
     for (const auto& b : request->binaries()) {
+        spdlog::trace("  Binary update: index={} value={}", b.index(), b.value());
         bridge_.applyUpdate(bridge::BinaryUpdate{
             .index = static_cast<std::uint16_t>(b.index()),
             .value = b.value(),
@@ -94,13 +99,14 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
     ::grpc::ServerWriter<dnp3bridge::v1::CommandRequest>* writer)
 {
     auto token = dispatcher_.registerWriter(writer);
+    spdlog::info("StreamCommands client connected");
 
     // Block until the client disconnects or the server is shutting down.
     while (!context->IsCancelled()) {
         std::this_thread::sleep_for(std::chrono::milliseconds{100});
     }
 
-    std::cerr << "[BridgeServiceImpl] StreamCommands client disconnected\n";
+    spdlog::info("StreamCommands client disconnected");
     // StreamToken destructor will unregister the writer.
     return ::grpc::Status::OK;
 }
@@ -110,8 +116,15 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
     const dnp3bridge::v1::CommandResponse* request,
     dnp3bridge::v1::UpdateResponse* response)
 {
+    spdlog::debug("RespondToCommand: command_id={} status={}",
+                  request->command_id(), static_cast<int>(request->status()));
+
     auto status = toCommandStatus(request->status());
     bool ok = dispatcher_.fulfill(request->command_id(), status);
+
+    if (!ok) {
+        spdlog::warn("RespondToCommand: unknown command_id={}", request->command_id());
+    }
 
     response->set_success(ok);
     response->set_message(ok ? "fulfilled" : "unknown command_id");

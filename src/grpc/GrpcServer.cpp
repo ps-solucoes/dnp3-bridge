@@ -2,7 +2,7 @@
 #include "grpc/BridgeServiceImpl.hpp"
 
 #include <grpcpp/grpcpp.h>
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace dnp3bridge::grpc {
 
@@ -22,16 +22,17 @@ void GrpcServer::start() {
 
     server_ = builder.BuildAndStart();
     if (!server_) {
-        std::cerr << "[GrpcServer] Failed to start on " << listen_address_ << "\n";
+        spdlog::critical("gRPC server failed to start on {}", listen_address_);
         return;
     }
 
-    std::cerr << "[GrpcServer] Listening on " << listen_address_ << "\n";
+    spdlog::info("gRPC server listening on {}", listen_address_);
     server_->Wait(); // blocks
 }
 
 void GrpcServer::stop() {
     if (server_) {
+        spdlog::info("gRPC server shutting down");
         server_->Shutdown();
     }
 }

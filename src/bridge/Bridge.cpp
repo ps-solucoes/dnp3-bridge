@@ -1,6 +1,8 @@
 #include "bridge/Bridge.hpp"
 #include "dnp3/OutstationManager.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <utility>
 
 namespace dnp3bridge::bridge {
@@ -27,6 +29,7 @@ void Bridge::start() {
         if (running_) return;
         running_ = true;
     }
+    spdlog::info("Bridge flush thread starting");
     flush_thread_ = std::jthread{[this] { flushLoop(); }};
 }
 
@@ -36,6 +39,7 @@ void Bridge::stop() {
         if (!running_) return;
         running_ = false;
     }
+    spdlog::info("Bridge flush thread stopping");
     cv_.notify_all();
     if (flush_thread_.joinable()) {
         flush_thread_.join();
@@ -56,6 +60,8 @@ void Bridge::flushLoop() {
 
             std::swap(batch, queue_);
         }
+
+        spdlog::trace("Bridge flushing {} updates", batch.size());
 
         // Drain the batch outside the lock.
         while (!batch.empty()) {

@@ -1,6 +1,6 @@
 #include "dnp3/CommandDispatcher.hpp"
 
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace dnp3bridge::dnp3 {
 
@@ -14,6 +14,7 @@ CommandDispatcher::StreamToken::StreamToken(CommandDispatcher* dispatcher)
 
 CommandDispatcher::StreamToken::~StreamToken() {
     if (dispatcher_) {
+        spdlog::info("Command stream writer unregistered");
         std::lock_guard lock{dispatcher_->writer_mutex_};
         dispatcher_->active_writer_ = nullptr;
     }
@@ -53,13 +54,14 @@ CommandDispatcher::StreamToken CommandDispatcher::registerWriter(
         std::lock_guard lock{writer_mutex_};
         active_writer_ = writer;
     }
-    std::cerr << "[CommandDispatcher] Stream writer registered\n";
+    spdlog::info("Command stream writer registered");
     return StreamToken{this};
 }
 
 opendnp3::CommandStatus CommandDispatcher::dispatch(dnp3bridge::v1::CommandRequest request) {
     const auto command_id = next_id_.fetch_add(1, std::memory_order_relaxed);
     request.set_command_id(command_id);
+    spdlog::debug("Dispatching command id={} type={} index={}", command_id, static_cast<int>(request.command_type()), request.point_index());
 
     std::future<opendnp3::CommandStatus> future;
     {
@@ -71,23 +73,25 @@ opendnp3::CommandStatus CommandDispatcher::dispatch(dnp3bridge::v1::CommandReque
     {
         std::lock_guard lock{writer_mutex_};
         if (!active_writer_) {
+            spdlog::warn("Command id={} rejected: no active stream writer", command_id);
             std::lock_guard plock{pending_mutex_};
             pending_.erase(command_id);
             return opendnp3::CommandStatus::NOT_SUPPORTED;
         }
         try {
             if (!active_writer_->Write(request)) {
+                spdlog::warn("Command id={} failed: stream write returned false", command_id);
                 std::lock_guard plock{pending_mutex_};
                 pending_.erase(command_id);
                 return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
             }
         } catch (const std::exception& e) {
-            std::cerr << "[CommandDispatcher] Write failed: " << e.what() << "\n";
+            spdlog::error("Command dispatch write failed: {}", e.what());
             std::lock_guard plock{pending_mutex_};
             pending_.erase(command_id);
             return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
         } catch (...) {
-            std::cerr << "[CommandDispatcher] Write failed with unknown exception\n";
+            spdlog::error("Command dispatch write failed with unknown exception");
             std::lock_guard plock{pending_mutex_};
             pending_.erase(command_id);
             return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
@@ -95,18 +99,23 @@ opendnp3::CommandStatus CommandDispatcher::dispatch(dnp3bridge::v1::CommandReque
     }
 
     if (future.wait_for(timeout_) == std::future_status::timeout) {
+        spdlog::warn("Command id={} timed out after {}ms", command_id, timeout_.count());
         std::lock_guard lock{pending_mutex_};
         pending_.erase(command_id);
         return opendnp3::CommandStatus::TIMEOUT;
     }
 
-    return future.get();
+    auto result = future.get();
+    spdlog::debug("Command id={} fulfilled with status={}", command_id, static_cast<int>(result));
+    return result;
 }
 
 bool CommandDispatcher::fulfill(uint64_t command_id, opendnp3::CommandStatus status) {
+    spdlog::debug("Fulfilling command id={} with status={}", command_id, static_cast<int>(status));
     std::lock_guard lock{pending_mutex_};
     auto it = pending_.find(command_id);
     if (it == pending_.end()) {
+        spdlog::warn("Fulfill failed: unknown command id={}", command_id);
         return false;
     }
     it->second.set_value(status);

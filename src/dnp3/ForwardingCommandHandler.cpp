@@ -2,7 +2,7 @@
 
 #include <opendnp3/gen/OperationType.h>
 
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace dnp3bridge::dnp3 {
 
@@ -43,6 +43,7 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
     const opendnp3::ControlRelayOutputBlock& command, uint16_t index,
     opendnp3::IUpdateHandler& /*handler*/, opendnp3::OperateType /*opType*/)
 {
+    spdlog::debug("CROB command received: index={} op={} count={} on={}ms off={}ms", index, static_cast<int>(command.opType), command.count, command.onTimeMS, command.offTimeMS);
     try {
         dnp3bridge::v1::CommandRequest request;
         request.set_point_index(index);
@@ -56,10 +57,10 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
 
         return dispatcher_.dispatch(std::move(request));
     } catch (const std::exception& e) {
-        std::cerr << "[ForwardingCommandHandler] Operate(CROB) failed: " << e.what() << "\n";
+        spdlog::error("CROB operate failed: {}", e.what());
         return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
     } catch (...) {
-        std::cerr << "[ForwardingCommandHandler] Operate(CROB) failed with unknown exception\n";
+        spdlog::error("CROB operate failed with unknown exception");
         return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
     }
 }
@@ -143,6 +144,7 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
 opendnp3::CommandStatus ForwardingCommandHandler::dispatchAnalog(
     uint16_t index, double value, dnp3bridge::v1::CommandType type)
 {
+    spdlog::debug("Analog command received: index={} value={} type={}", index, value, static_cast<int>(type));
     try {
         dnp3bridge::v1::CommandRequest request;
         request.set_point_index(index);
@@ -151,10 +153,10 @@ opendnp3::CommandStatus ForwardingCommandHandler::dispatchAnalog(
 
         return dispatcher_.dispatch(std::move(request));
     } catch (const std::exception& e) {
-        std::cerr << "[ForwardingCommandHandler] Operate(Analog) failed: " << e.what() << "\n";
+        spdlog::error("Analog operate failed: {}", e.what());
         return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
     } catch (...) {
-        std::cerr << "[ForwardingCommandHandler] Operate(Analog) failed with unknown exception\n";
+        spdlog::error("Analog operate failed with unknown exception");
         return opendnp3::CommandStatus::DOWNSTREAM_FAIL;
     }
 }

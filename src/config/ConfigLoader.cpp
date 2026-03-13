@@ -53,6 +53,9 @@ auto load_from_json(const std::string& path, AppConfig& cfg) -> std::expected<vo
     if (j.contains("dnp3_local_address"))   cfg.dnp3_local_address  = j["dnp3_local_address"].get<std::uint16_t>();
     if (j.contains("dnp3_remote_address"))  cfg.dnp3_remote_address = j["dnp3_remote_address"].get<std::uint16_t>();
     if (j.contains("log_level"))            cfg.log_level           = j["log_level"].get<std::string>();
+    if (j.contains("log_file"))             cfg.log_file            = j["log_file"].get<std::string>();
+    if (j.contains("log_max_size_mb"))      cfg.log_max_size_mb     = j["log_max_size_mb"].get<std::uint32_t>();
+    if (j.contains("log_max_files"))        cfg.log_max_files       = j["log_max_files"].get<std::uint32_t>();
     if (j.contains("command_timeout_ms"))   cfg.command_timeout_ms  = j["command_timeout_ms"].get<std::uint32_t>();
 
     return {};
@@ -80,6 +83,9 @@ auto ConfigLoader::load(std::optional<std::string> path)
     cfg.dnp3_local_address  = env_uint16("DNP3_BRIDGE_DNP3_LOCAL_ADDR",  cfg.dnp3_local_address);
     cfg.dnp3_remote_address = env_uint16("DNP3_BRIDGE_DNP3_REMOTE_ADDR", cfg.dnp3_remote_address);
     cfg.log_level           = env_or("DNP3_BRIDGE_LOG_LEVEL", cfg.log_level);
+    cfg.log_file            = env_or("DNP3_BRIDGE_LOG_FILE", cfg.log_file);
+    cfg.log_max_size_mb     = env_uint32("DNP3_BRIDGE_LOG_MAX_SIZE_MB", cfg.log_max_size_mb);
+    cfg.log_max_files       = env_uint32("DNP3_BRIDGE_LOG_MAX_FILES", cfg.log_max_files);
     cfg.command_timeout_ms  = env_uint32("DNP3_BRIDGE_COMMAND_TIMEOUT_MS", cfg.command_timeout_ms);
 
     return cfg;
