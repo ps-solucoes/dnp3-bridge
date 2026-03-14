@@ -129,8 +129,10 @@ Element buildAnalogTable(const std::string& title,
 std::string wallClockNow() {
     auto now_wall = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now_wall);
+    struct tm tm_buf{};
+    localtime_r(&time_t_now, &tm_buf);
     char buf[32];
-    std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&time_t_now));
+    std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm_buf);
     return buf;
 }
 
@@ -138,8 +140,8 @@ std::string wallClockNow() {
 
 ftxui::Component buildRoot(
     DataModel& model,
-    std::shared_ptr<opendnp3::IMaster>& master,
-    std::shared_ptr<opendnp3::ISOEHandler>& soeHandler,
+    std::shared_ptr<opendnp3::IMaster> master,
+    std::shared_ptr<opendnp3::ISOEHandler> soeHandler,
     ftxui::ScreenInteractive& screen)
 {
     // Modal state
@@ -257,23 +259,31 @@ ftxui::Component buildRoot(
             }) | borderHeavy | size(WIDTH, EQUAL, 45) | size(HEIGHT, EQUAL, 16) | clear_under | center;
         });
 
+    constexpr int kMaxCrobIndex = static_cast<int>(kBinaryOutputNames.size()) - 1;
+
     auto crob_modal_component = CatchEvent(crob_modal_renderer,
-        [&model, &master, crob_index, crob_op, crob_op_entries, show_crob_modal, commandCallback, notify](Event event) {
+        [&model, master, crob_index, crob_op, crob_op_entries, show_crob_modal, commandCallback, notify](Event event) {
             if (event == Event::Escape) {
                 *show_crob_modal = false;
                 return true;
             }
             if (event == Event::ArrowUp) {
-                *crob_index = (*crob_index > 0) ? *crob_index - 1 : 19;
+                *crob_index = (*crob_index > 0) ? *crob_index - 1 : kMaxCrobIndex;
                 return true;
             }
             if (event == Event::ArrowDown) {
-                *crob_index = (*crob_index < 19) ? *crob_index + 1 : 0;
+                *crob_index = (*crob_index < kMaxCrobIndex) ? *crob_index + 1 : 0;
                 return true;
             }
             if (event == Event::Return) {
-                auto opType = static_cast<opendnp3::OperationType>(*crob_op);
-                opendnp3::ControlRelayOutputBlock crob(opType);
+                static constexpr opendnp3::OperationType kOpTypes[] = {
+                    opendnp3::OperationType::NUL,
+                    opendnp3::OperationType::PULSE_ON,
+                    opendnp3::OperationType::PULSE_OFF,
+                    opendnp3::OperationType::LATCH_ON,
+                    opendnp3::OperationType::LATCH_OFF,
+                };
+                opendnp3::ControlRelayOutputBlock crob(kOpTypes[*crob_op]);
                 uint16_t idx = static_cast<uint16_t>(*crob_index);
                 {
                     std::lock_guard lock(model.mutex);
@@ -307,18 +317,20 @@ ftxui::Component buildRoot(
             }) | borderHeavy | size(WIDTH, EQUAL, 45) | size(HEIGHT, EQUAL, 12) | clear_under | center;
         });
 
+    constexpr int kMaxAnalogIndex = static_cast<int>(kAnalogOutputNames.size()) - 1;
+
     auto analog_modal_component = CatchEvent(analog_modal_renderer,
-        [&model, &master, analog_index, analog_value_str, show_analog_modal, commandCallback, notify](Event event) {
+        [&model, master, analog_index, analog_value_str, show_analog_modal, commandCallback, notify](Event event) {
             if (event == Event::Escape) {
                 *show_analog_modal = false;
                 return true;
             }
             if (event == Event::ArrowUp) {
-                *analog_index = (*analog_index > 0) ? *analog_index - 1 : 4;
+                *analog_index = (*analog_index > 0) ? *analog_index - 1 : kMaxAnalogIndex;
                 return true;
             }
             if (event == Event::ArrowDown) {
-                *analog_index = (*analog_index < 4) ? *analog_index + 1 : 0;
+                *analog_index = (*analog_index < kMaxAnalogIndex) ? *analog_index + 1 : 0;
                 return true;
             }
             if (event == Event::Return) {
@@ -355,7 +367,7 @@ ftxui::Component buildRoot(
 
     // --- Key event handling ---
     auto root = CatchEvent(main_container,
-        [&model, &master, &soeHandler, &screen, tab_index,
+        [&model, master, soeHandler, &screen, tab_index,
          show_crob_modal, show_analog_modal, commandCallback, notify](Event event) {
             // Update tab index based on modal state
             if (*show_crob_modal) {

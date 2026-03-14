@@ -1,0 +1,125 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build Commands
+
+```bash
+cmake --preset dev -Wno-dev    # configure (debug)
+cmake --build --preset dev     # build all targets
+./build/debug/dnp3-bridge      # run
+
+cmake --preset release         # configure (release)
+cmake --build --preset release # build (release)
+```
+
+System dependencies (apt): `libgrpc++-dev`, `libprotobuf-dev`, `protobuf-compiler-grpc`
+
+After modifying `proto/dnp3bridge.proto`, a rebuild will regenerate the C++ sources automatically.
+
+## Testing
+
+```bash
+cmake --build --preset dev --target dnp3-bridge-tests              # build unit tests
+cmake --build --preset dev --target dnp3-bridge-integration-tests  # build integration tests
+
+./build/debug/dnp3-bridge-tests -s                                 # run unit tests (verbose)
+./build/debug/dnp3-bridge-integration-tests -s                     # run integration tests (verbose)
+./build/debug/dnp3-bridge-tests -tc="ConfigLoader*"                # run single test case by name
+```
+
+Tests use doctest. Unit tests cover ConfigLoader, Bridge, CommandDispatcher, and PointMap. Integration tests spin up the full stack in-process (gRPC client + DNP3 master + bridge) on test ports (50052/20001).
+
+## Architecture
+
+This is a C++23 bridge service running on a BeagleBone that translates between a Python application (gRPC) and a SCADA system (DNP3). The full system chain is:
+
+```
+DSP <==Modbus==> BeagleBone[Python] <==gRPC==> BeagleBone[C++] <==DNP3==> SCADA
+```
+
+The C++ side is intentionally thin — Python is the "brain" that handles business logic, logging, and data analysis. This service is purely a protocol translator.
+
+### Bidirectional Data Flow
+
+```
+Python → SCADA (point updates):
+  Python ──gRPC UpdatePoints──> BridgeServiceImpl ──> Bridge (queue) ──> OutstationManager ──DNP3──> SCADA
+
+SCADA → Python (commands):
+  SCADA ──DNP3 OPERATE──> ForwardingCommandHandler ──> CommandDispatcher ──gRPC stream──> Python
+  Python ──gRPC RespondToCommand──> CommandDispatcher ──> ForwardingCommandHandler ──DNP3 response──> SCADA
+```
+
+### Component Layers
+
+- **`src/grpc/`** — gRPC server. `BridgeServiceImpl` implements `BridgeService` (sync API). `GrpcServer` owns the `grpc::Server` lifecycle. Uses `::grpc::` namespace prefix to avoid collision with `dnp3bridge::grpc`.
+- **`src/bridge/`** — Decoupling layer. `Bridge` accepts `PointUpdate` variants via a thread-safe queue and flushes to `OutstationManager` on a background `std::jthread`. `DataModel.hpp` defines the variant types.
+- **`src/dnp3/`** — DNP3 outstation using opendnp3 3.1.2:
+  - `OutstationManager` — owns DNP3Manager, TCP server channel, and outstation
+  - `ForwardingCommandHandler` — implements `ICommandHandler`, forwards SCADA commands (CROB, analog outputs) to Python via `CommandDispatcher`
+  - `CommandDispatcher` — coordination hub for the reverse command path. Uses `std::promise`/`std::future` pairs keyed by command ID with configurable timeout. Manages a `ServerWriter` for the streaming RPC.
+- **`src/config/`** — `AppConfig` struct with defaults; `ConfigLoader` reads from JSON file then overlays environment variables.
+- **`src/main.cpp`** — Wires all components, configures spdlog, installs signal handlers, runs gRPC on a `jthread`.
+
+### Command Dispatch Mechanism
+
+When SCADA sends a DNP3 command, `ForwardingCommandHandler::Operate()` is called synchronously on the opendnp3 IO thread. It builds a `CommandRequest` proto, passes it to `CommandDispatcher::dispatch()` which:
+1. Inserts a `std::promise` into a pending map
+2. Writes the request to the active gRPC `ServerWriter` (the `StreamCommands` stream)
+3. Blocks on `future.wait_for(timeout)` until Python calls `RespondToCommand`
+4. Returns the `CommandStatus` to opendnp3
+
+`SELECT` operations return `SUCCESS` unconditionally (validation happens at `OPERATE` time in Python). DNP3Manager runs with 2 threads so a blocked `Operate()` doesn't stall the link layer.
+
+### Namespaces
+
+All project code lives under `dnp3bridge::` with sub-namespaces: `config`, `bridge`, `grpc`, `dnp3`.
+
+### Threading Model
+
+Four thread domains: gRPC sync server thread pool, Bridge flush `jthread`, opendnp3's internal ASIO threads (2), and the main thread polling for shutdown signals. The Bridge queue synchronizes gRPC→DNP3; the CommandDispatcher promise/future pairs synchronize DNP3→gRPC.
+
+### Crash Safety
+
+`SIGPIPE` is ignored in `main.cpp` — gRPC stream writes to a disconnected client must not kill the process. `ForwardingCommandHandler` and `CommandDispatcher` wrap all gRPC writes in try/catch, returning `DOWNSTREAM_FAIL` on exceptions.
+
+## Build System Notes
+
+- Single `CMakeLists.txt` at root (no subdirectory build files).
+- opendnp3 is fetched via `FetchContent` (tag 3.1.2) and **must be compiled as C++14** — its bundled ASIO uses `concept bool` (Concepts TS) which is invalid in C++20+. This is enforced via `set_target_properties` after `FetchContent_MakeAvailable`.
+- gRPC/protobuf come from system apt packages via `find_package`.
+- Proto codegen uses `add_custom_command` with `VERBATIM` — do not add quotes around `--proto_path=` / `--cpp_out=` flag values (causes double-escaping).
+- Generated proto headers land in `${CMAKE_BINARY_DIR}/generated/` and are included as `"dnp3bridge.pb.h"` / `"dnp3bridge.grpc.pb.h"`.
+
+## Logging
+
+Uses spdlog. All source files use `spdlog::info/debug/warn/error/trace()` — no `std::cerr` in `src/`.
+
+Log levels used: `critical` (server bind failure), `error` (exceptions), `warn` (timeouts, missing stream), `info` (lifecycle events), `debug` (RPC calls, command dispatch), `trace` (individual point values, flush batches).
+
+When `log_file` is configured, logs go to both stderr (with color) and a rotating file.
+
+## Configuration
+
+Loaded from JSON config file (optional CLI arg), then environment variables override. Env vars always take precedence.
+
+| Variable | JSON key | Default |
+|---|---|---|
+| `DNP3_BRIDGE_GRPC_ADDRESS` | `grpc_listen_address` | `0.0.0.0:50051` |
+| `DNP3_BRIDGE_DNP3_HOST` | `dnp3_channel_host` | `0.0.0.0` |
+| `DNP3_BRIDGE_DNP3_PORT` | `dnp3_channel_port` | `20000` |
+| `DNP3_BRIDGE_DNP3_LOCAL_ADDR` | `dnp3_local_address` | `1024` |
+| `DNP3_BRIDGE_DNP3_REMOTE_ADDR` | `dnp3_remote_address` | `1` |
+| `DNP3_BRIDGE_COMMAND_TIMEOUT_MS` | `command_timeout_ms` | `3000` |
+| `DNP3_BRIDGE_LOG_LEVEL` | `log_level` | `info` |
+| `DNP3_BRIDGE_LOG_FILE` | `log_file` | *(empty — disabled)* |
+| `DNP3_BRIDGE_LOG_MAX_SIZE_MB` | `log_max_size_mb` | `5` |
+| `DNP3_BRIDGE_LOG_MAX_FILES` | `log_max_files` | `3` |
+
+## Simulators
+
+Two test tools in `tools/` for end-to-end testing without real hardware:
+
+- **`tools/dnp3-master-sim/`** — C++ DNP3 master with interactive CLI (polls, CROB, analog commands). Links only opendnp3, no gRPC. Uses `std::cout` for CLI output (not spdlog).
+- **`tools/python-dsp-sim/`** — Python gRPC client simulating the DSP/Python side. Supports `--mode interactive` (menu) and `--mode auto` (headless). Has its own venv and `generate_proto.sh`.

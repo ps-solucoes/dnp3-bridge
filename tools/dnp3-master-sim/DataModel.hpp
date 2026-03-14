@@ -37,6 +37,7 @@ struct DataModel {
     std::string last_poll_type;
     std::string last_poll_time;
 
+    /// Must be called with mutex held.
     void addLog(const std::string& text) {
         if (event_log.size() >= kMaxLogEntries) {
             event_log.pop_front();

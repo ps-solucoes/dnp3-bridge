@@ -11,16 +11,24 @@ Usage:
 
 import asyncio
 import argparse
-import random
+import os
 import sys
 import time
 from datetime import datetime
 
 import grpc
 
-sys.path.insert(0, __file__.rsplit("/", 1)[0])
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from generated import dnp3bridge_pb2 as pb
 from generated import dnp3bridge_pb2_grpc as pb_grpc
+from point_map import (
+    ANALOG_INPUT_NAMES,
+    ANALOG_OUTPUT_NAMES,
+    BINARY_INPUT_NAMES,
+    BINARY_OUTPUT_NAMES,
+    REALISTIC_BINARY_DEFAULTS,
+    generate_realistic_analogs,
+)
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -40,79 +48,11 @@ from textual.widgets import (
     Select,
     Static,
 )
+from textual.worker import get_current_worker
 
 # ---------------------------------------------------------------------------
-# Point name tables (mirrors the communication map)
+# Proto enum name tables (depend on pb, so kept here)
 # ---------------------------------------------------------------------------
-BINARY_INPUT_NAMES = {
-    0: "Equipamento Energizado",
-    1: "Equipamento Operando",
-    2: "Alarme",
-    3: "Operacao Local/Remoto",
-    4: "Botoeira de Emergencia",
-    5: "Status Desequilibrio",
-    6: "Status Reativo",
-    7: "Status Suporte de Tensao",
-    8: "Status Regulacao de Tensao",
-    9: "Status Compensacao Harmonica",
-    10: "Erro de IGBT",
-}
-
-ANALOG_INPUT_NAMES = {
-    0: "Tensao Fase A",
-    1: "Tensao Fase B",
-    2: "Tensao Fase C",
-    3: "Corrente Fase A",
-    4: "Corrente Fase B",
-    5: "Corrente Fase C",
-    6: "Corrente Neutro",
-    7: "THD Tensao Fase A",
-    8: "THD Tensao Fase B",
-    9: "THD Tensao Fase C",
-    10: "THD Corrente Fase A",
-    11: "THD Corrente Fase B",
-    12: "THD Corrente Fase C",
-    13: "Desequilibrio Negativo",
-    14: "Desequilibrio Zero",
-    15: "Tensao Link CC",
-    16: "Temperatura Ponte",
-    17: "Estado Atual de Operacao",
-    18: "Modo Reativo",
-    19: "Modo Harmonicos",
-    20: "Codigo de Falta",
-}
-
-BINARY_OUTPUT_NAMES = {
-    0: "Conectar Equipamento",
-    1: "Desconectar Equipamento",
-    2: "Reset Protecao",
-    3: "Emergencia",
-    4: "Ativa Desequilibrio",
-    5: "Desativa Desequilibrio",
-    6: "Ativa Suporte de Tensao",
-    7: "Desativa Suporte de Tensao",
-    8: "Ativa Regulacao de Tensao",
-    9: "Desativa Regulacao de Tensao",
-    10: "Ativa Compensacao Harmonica",
-    11: "Desativa Compensacao Harmonica",
-    12: "Compensa Harmonica 3",
-    13: "Compensa Harmonica 5",
-    14: "Compensa Harmonica 7",
-    15: "Compensa Harmonica 9",
-    16: "Compensa Harmonica 11",
-    17: "Compensacao Harmonica Completa",
-    18: "Aciona Ventilador Painel",
-    19: "Aciona Ventilador Ponte",
-}
-
-ANALOG_OUTPUT_NAMES = {
-    0: "Ref. Regulacao de Tensao",
-    1: "Limite Corrente Deseq. Neg.",
-    2: "Limite Corrente Deseq. Zero",
-    3: "Limite Corrente Reativo",
-    4: "Limite Corrente Harmonico",
-}
-
 COMMAND_TYPE_NAMES = {
     pb.COMMAND_TYPE_CROB: "CROB",
     pb.COMMAND_TYPE_ANALOG_INT16: "AnalogInt16",
@@ -128,48 +68,6 @@ CROB_OP_NAMES = {
     pb.CROB_OPERATION_LATCH_ON: "LATCH_ON",
     pb.CROB_OPERATION_LATCH_OFF: "LATCH_OFF",
 }
-
-# Realistic binary input defaults
-REALISTIC_BINARY_VALUES = {
-    0: True,   # Energizado
-    1: True,   # Operando
-    2: False,  # Alarme
-    3: True,   # Local/Remoto
-    4: False,  # Botoeira Emergencia
-    5: False,  # Status Desequilibrio
-    6: True,   # Status Reativo
-    7: False,  # Status Suporte Tensao
-    8: False,  # Status Regulacao Tensao
-    9: True,   # Status Comp. Harmonica
-    10: False, # Erro IGBT
-}
-
-
-def generate_realistic_analogs():
-    """Generate realistic analog point values."""
-    return [
-        (0, random.gauss(220.0, 2.0)),
-        (1, random.gauss(220.0, 2.0)),
-        (2, random.gauss(220.0, 2.0)),
-        (3, random.gauss(15.0, 1.0)),
-        (4, random.gauss(15.0, 1.0)),
-        (5, random.gauss(15.0, 1.0)),
-        (6, random.gauss(0.5, 0.1)),
-        (7, random.uniform(2.0, 5.0)),
-        (8, random.uniform(2.0, 5.0)),
-        (9, random.uniform(2.0, 5.0)),
-        (10, random.uniform(2.0, 5.0)),
-        (11, random.uniform(2.0, 5.0)),
-        (12, random.uniform(2.0, 5.0)),
-        (13, random.uniform(0.5, 2.0)),
-        (14, random.uniform(0.5, 2.0)),
-        (15, random.gauss(650.0, 5.0)),
-        (16, random.gauss(45.0, 3.0)),
-        (17, 1.0),
-        (18, 2.0),
-        (19, 0.0),
-        (20, 0.0),
-    ]
 
 
 # ---------------------------------------------------------------------------
@@ -446,8 +344,7 @@ class DspSimApp(App):
         # Track current point values
         self.binary_values: dict[int, bool | None] = {i: None for i in BINARY_INPUT_NAMES}
         self.analog_values: dict[int, float | None] = {i: None for i in ANALOG_INPUT_NAMES}
-        # Command history: list of (cmd, response_text, response_style)
-        self.command_history: list[tuple[pb.CommandRequest, str, str]] = []
+        # Command history
         self.last_cmd_detail: str = ""
 
     def compose(self) -> ComposeResult:
@@ -482,17 +379,14 @@ class DspSimApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        # Set up command table columns
         table = self.query_one("#cmd-table", DataTable)
         table.add_columns("ID", "Time", "Type", "Point", "Response")
         table.cursor_type = "row"
 
-        # Update reactive displays
         self._refresh_auto_respond_label()
         self._refresh_auto_pilot_label()
         self._refresh_stats()
 
-        # Connect and start listeners
         self._connect_grpc()
         self._start_command_listener()
         self._start_clock_ticker()
@@ -682,31 +576,23 @@ class DspSimApp(App):
     @work(thread=True, exclusive=True, group="cmd_listener")
     def _start_command_listener(self) -> None:
         """Blocking loop that listens for SCADA commands via StreamCommands."""
-        while not self._is_shutting_down():
+        worker = get_current_worker()
+        while not worker.is_cancelled:
             if not self.stub:
-                import time as _time
-                _time.sleep(2)
+                time.sleep(2)
                 continue
             try:
                 self.call_from_thread(self._post_connection_state, True)
                 stream = self.stub.StreamCommands(pb.StreamCommandsRequest())
                 for cmd in stream:
-                    if self._is_shutting_down():
+                    if worker.is_cancelled:
                         break
                     self.call_from_thread(self._handle_incoming_command, cmd)
             except grpc.RpcError:
-                if self._is_shutting_down():
+                if worker.is_cancelled:
                     break
                 self.call_from_thread(self._post_connection_state, False)
-                import time as _time
-                _time.sleep(2)
-
-    def _is_shutting_down(self) -> bool:
-        """Check if app is shutting down."""
-        try:
-            return self._exit
-        except Exception:
-            return False
+                time.sleep(2)
 
     def _post_connection_state(self, connected: bool) -> None:
         self.connected = connected
@@ -745,14 +631,12 @@ class DspSimApp(App):
 
         self._log(f"[cyan][CMD][/] #{cmd.command_id} {cmd_type} pt={cmd.point_index} ({point_name})")
 
-        # Update detail view
         self.last_cmd_detail = "\n".join(detail_lines)
         try:
             self.query_one("#cmd-detail", Static).update(self.last_cmd_detail)
         except Exception:
             pass
 
-        # Add to command table with PENDING status initially
         now = datetime.now().strftime("%H:%M:%S")
         table = self.query_one("#cmd-table", DataTable)
         row_key = table.add_row(
@@ -764,35 +648,26 @@ class DspSimApp(App):
         )
 
         if self.auto_respond:
-            # Schedule auto-response after 100ms simulated delay
             self.set_timer(0.1, lambda: self._do_auto_respond(cmd.command_id, row_key))
         else:
             self._log(
                 f"[yellow][CMD][/] Auto-respond OFF - command #{cmd.command_id} will timeout"
             )
 
-    async def _async_respond(self, command_id: int, row_key) -> None:
+    @work
+    async def _do_auto_respond(self, command_id: int, row_key) -> None:
         """Respond to a command and update the table row."""
         success = await self._respond_to_command(command_id)
-        table = self.query_one("#cmd-table", DataTable)
-        if success:
-            self._log(f"[green][RSP][/] Responded SUCCESS to #{command_id}")
-            try:
-                # Update the response column in the row
-                row_data = table.get_row(row_key)
+        try:
+            table = self.query_one("#cmd-table", DataTable)
+            if success:
+                self._log(f"[green][RSP][/] Responded SUCCESS to #{command_id}")
                 table.update_cell(row_key, "Response", "[green]SUCCESS[/]")
-            except Exception:
-                pass
-        else:
-            self._log(f"[red][RSP][/] Response failed for #{command_id}")
-            try:
+            else:
+                self._log(f"[red][RSP][/] Response failed for #{command_id}")
                 table.update_cell(row_key, "Response", "[red]FAILED[/]")
-            except Exception:
-                pass
-
-    def _do_auto_respond(self, command_id: int, row_key) -> None:
-        """Trigger async response."""
-        asyncio.ensure_future(self._async_respond(command_id, row_key))
+        except Exception:
+            pass
 
     # -----------------------------------------------------------------------
     # Actions
@@ -800,7 +675,7 @@ class DspSimApp(App):
     async def action_send_realistic(self) -> None:
         """Send all 11 binary + 21 analog points with realistic values."""
         binaries = []
-        for idx, val in REALISTIC_BINARY_VALUES.items():
+        for idx, val in REALISTIC_BINARY_DEFAULTS.items():
             binaries.append(pb.BinaryPoint(index=idx, value=val, quality=pb.POINT_QUALITY_GOOD))
             self.binary_values[idx] = val
 
@@ -864,7 +739,8 @@ class DspSimApp(App):
         else:
             name = ANALOG_INPUT_NAMES.get(idx, "?")
             val = self.analog_values.get(idx)
-            self._log(f"[dim][UPD][/] Sent AI[{idx}] ({name}) = {val:.4f}: success={success}")
+            val_str = f"{val:.4f}" if val is not None else "N/A"
+            self._log(f"[dim][UPD][/] Sent AI[{idx}] ({name}) = {val_str}: success={success}")
 
     async def action_check_status(self) -> None:
         """Query outstation status."""
@@ -910,9 +786,7 @@ class DspSimApp(App):
                 table = self.query_one("#cmd-table", DataTable)
                 row = table.get_row(event.row_key)
                 cmd_id = row[0]
-                # Find matching command in history detail
                 detail = self.query_one("#cmd-detail", Static)
-                # Show basic info from the table row
                 detail.update(
                     f"Command #{cmd_id}\n"
                     f"  Time: {row[1]}\n"

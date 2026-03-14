@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import random
 import signal
 import sys
@@ -21,10 +22,17 @@ import time
 
 import grpc
 
-# Add the generated directory to the path.
-sys.path.insert(0, __file__.rsplit("/", 1)[0])
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from generated import dnp3bridge_pb2 as pb
 from generated import dnp3bridge_pb2_grpc as pb_grpc
+from point_map import (
+    ANALOG_INPUT_NAMES,
+    ANALOG_OUTPUT_NAMES,
+    BINARY_INPUT_NAMES,
+    BINARY_OUTPUT_NAMES,
+    REALISTIC_BINARY_DEFAULTS,
+    generate_realistic_analogs,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,81 +45,12 @@ log = logging.getLogger("dsp_sim")
 # Global state
 # ---------------------------------------------------------------------------
 shutdown_event = threading.Event()
-auto_respond = True
-auto_respond_lock = threading.Lock()
+auto_respond_event = threading.Event()
+auto_respond_event.set()  # ON by default
 
 # ---------------------------------------------------------------------------
-# Point name tables (mirrors the communication map)
+# Proto enum name tables (depend on pb, so kept here)
 # ---------------------------------------------------------------------------
-BINARY_INPUT_NAMES = {
-    0: "Equipamento Energizado",
-    1: "Equipamento Operando",
-    2: "Alarme",
-    3: "Operacao Local/Remoto",
-    4: "Botoeira de Emergencia",
-    5: "Status Desequilibrio",
-    6: "Status Reativo",
-    7: "Status Suporte de Tensao",
-    8: "Status Regulacao de Tensao",
-    9: "Status Compensacao Harmonica",
-    10: "Erro de IGBT",
-}
-
-ANALOG_INPUT_NAMES = {
-    0: "Tensao Fase A",
-    1: "Tensao Fase B",
-    2: "Tensao Fase C",
-    3: "Corrente Fase A",
-    4: "Corrente Fase B",
-    5: "Corrente Fase C",
-    6: "Corrente Neutro",
-    7: "THD Tensao Fase A",
-    8: "THD Tensao Fase B",
-    9: "THD Tensao Fase C",
-    10: "THD Corrente Fase A",
-    11: "THD Corrente Fase B",
-    12: "THD Corrente Fase C",
-    13: "Desequilibrio Negativo",
-    14: "Desequilibrio Zero",
-    15: "Tensao Link CC",
-    16: "Temperatura Ponte",
-    17: "Estado Atual de Operacao",
-    18: "Modo Reativo",
-    19: "Modo Harmonicos",
-    20: "Codigo de Falta",
-}
-
-BINARY_OUTPUT_NAMES = {
-    0: "Conectar Equipamento",
-    1: "Desconectar Equipamento",
-    2: "Reset Protecao",
-    3: "Emergencia",
-    4: "Ativa Desequilibrio",
-    5: "Desativa Desequilibrio",
-    6: "Ativa Suporte de Tensao",
-    7: "Desativa Suporte de Tensao",
-    8: "Ativa Regulacao de Tensao",
-    9: "Desativa Regulacao de Tensao",
-    10: "Ativa Compensacao Harmonica",
-    11: "Desativa Compensacao Harmonica",
-    12: "Compensa Harmonica 3",
-    13: "Compensa Harmonica 5",
-    14: "Compensa Harmonica 7",
-    15: "Compensa Harmonica 9",
-    16: "Compensa Harmonica 11",
-    17: "Compensacao Harmonica Completa",
-    18: "Aciona Ventilador Painel",
-    19: "Aciona Ventilador Ponte",
-}
-
-ANALOG_OUTPUT_NAMES = {
-    0: "Ref. Regulacao de Tensao",
-    1: "Limite Corrente Deseq. Neg.",
-    2: "Limite Corrente Deseq. Zero",
-    3: "Limite Corrente Reativo",
-    4: "Limite Corrente Harmonico",
-}
-
 COMMAND_TYPE_NAMES = {
     pb.COMMAND_TYPE_CROB: "CROB",
     pb.COMMAND_TYPE_ANALOG_INT16: "AnalogInt16",
@@ -141,7 +80,6 @@ def handle_signal(signum, _frame):
 # ---------------------------------------------------------------------------
 def command_listener(stub: pb_grpc.BridgeServiceStub):
     """Listen for SCADA commands on the StreamCommands stream and respond."""
-    global auto_respond
     while not shutdown_event.is_set():
         try:
             log.info("Opening StreamCommands stream...")
@@ -173,22 +111,22 @@ def command_listener(stub: pb_grpc.BridgeServiceStub):
                 elif cmd.HasField("analog_value"):
                     log.info("  Analog value: %f  [%s]", cmd.analog_value, ao_name)
 
-                with auto_respond_lock:
-                    should_respond = auto_respond
-
-                if should_respond:
+                if auto_respond_event.is_set():
                     time.sleep(0.1)  # Simulate Modbus round-trip
-                    resp = stub.RespondToCommand(
-                        pb.CommandResponse(
-                            command_id=cmd.command_id,
-                            status=pb.COMMAND_RESULT_SUCCESS,
+                    try:
+                        resp = stub.RespondToCommand(
+                            pb.CommandResponse(
+                                command_id=cmd.command_id,
+                                status=pb.COMMAND_RESULT_SUCCESS,
+                            )
                         )
-                    )
-                    log.info(
-                        "  Responded to command #%d: ack=%s",
-                        cmd.command_id,
-                        resp.success,
-                    )
+                        log.info(
+                            "  Responded to command #%d: ack=%s",
+                            cmd.command_id,
+                            resp.success,
+                        )
+                    except grpc.RpcError as e:
+                        log.warning("  RespondToCommand failed for #%d: %s", cmd.command_id, e.code())
                 else:
                     log.info(
                         "  Auto-respond OFF — not responding to command #%d (will timeout)",
@@ -200,6 +138,11 @@ def command_listener(stub: pb_grpc.BridgeServiceStub):
                 break
             log.warning("StreamCommands disconnected: %s. Reconnecting in 2s...", e.code())
             time.sleep(2)
+        except Exception:
+            log.exception("Unexpected error in command_listener; restarting in 2s")
+            if shutdown_event.is_set():
+                break
+            time.sleep(2)
 
 
 # ---------------------------------------------------------------------------
@@ -208,41 +151,13 @@ def command_listener(stub: pb_grpc.BridgeServiceStub):
 def send_realistic_data(stub: pb_grpc.BridgeServiceStub):
     """Send all 11 binary inputs + 21 analog inputs with realistic values."""
     binaries = [
-        pb.BinaryPoint(index=0, value=True, quality=pb.POINT_QUALITY_GOOD),   # Energizado
-        pb.BinaryPoint(index=1, value=True, quality=pb.POINT_QUALITY_GOOD),   # Operando
-        pb.BinaryPoint(index=2, value=False, quality=pb.POINT_QUALITY_GOOD),  # Alarme
-        pb.BinaryPoint(index=3, value=True, quality=pb.POINT_QUALITY_GOOD),   # Local/Remoto
-        pb.BinaryPoint(index=4, value=False, quality=pb.POINT_QUALITY_GOOD),  # Botoeira Emergencia
-        pb.BinaryPoint(index=5, value=False, quality=pb.POINT_QUALITY_GOOD),  # Status Desequilibrio
-        pb.BinaryPoint(index=6, value=True, quality=pb.POINT_QUALITY_GOOD),   # Status Reativo
-        pb.BinaryPoint(index=7, value=False, quality=pb.POINT_QUALITY_GOOD),  # Status Suporte Tensao
-        pb.BinaryPoint(index=8, value=False, quality=pb.POINT_QUALITY_GOOD),  # Status Regulacao Tensao
-        pb.BinaryPoint(index=9, value=True, quality=pb.POINT_QUALITY_GOOD),   # Status Comp. Harmonica
-        pb.BinaryPoint(index=10, value=False, quality=pb.POINT_QUALITY_GOOD), # Erro IGBT
+        pb.BinaryPoint(index=idx, value=val, quality=pb.POINT_QUALITY_GOOD)
+        for idx, val in REALISTIC_BINARY_DEFAULTS.items()
     ]
 
     analogs = [
-        pb.AnalogPoint(index=0, value=random.gauss(220.0, 2.0), quality=pb.POINT_QUALITY_GOOD),   # Tensao A
-        pb.AnalogPoint(index=1, value=random.gauss(220.0, 2.0), quality=pb.POINT_QUALITY_GOOD),   # Tensao B
-        pb.AnalogPoint(index=2, value=random.gauss(220.0, 2.0), quality=pb.POINT_QUALITY_GOOD),   # Tensao C
-        pb.AnalogPoint(index=3, value=random.gauss(15.0, 1.0), quality=pb.POINT_QUALITY_GOOD),    # Corrente A
-        pb.AnalogPoint(index=4, value=random.gauss(15.0, 1.0), quality=pb.POINT_QUALITY_GOOD),    # Corrente B
-        pb.AnalogPoint(index=5, value=random.gauss(15.0, 1.0), quality=pb.POINT_QUALITY_GOOD),    # Corrente C
-        pb.AnalogPoint(index=6, value=random.gauss(0.5, 0.1), quality=pb.POINT_QUALITY_GOOD),     # Corrente Neutro
-        pb.AnalogPoint(index=7, value=random.uniform(2.0, 5.0), quality=pb.POINT_QUALITY_GOOD),   # THD Tensao A
-        pb.AnalogPoint(index=8, value=random.uniform(2.0, 5.0), quality=pb.POINT_QUALITY_GOOD),   # THD Tensao B
-        pb.AnalogPoint(index=9, value=random.uniform(2.0, 5.0), quality=pb.POINT_QUALITY_GOOD),   # THD Tensao C
-        pb.AnalogPoint(index=10, value=random.uniform(2.0, 5.0), quality=pb.POINT_QUALITY_GOOD),  # THD Corrente A
-        pb.AnalogPoint(index=11, value=random.uniform(2.0, 5.0), quality=pb.POINT_QUALITY_GOOD),  # THD Corrente B
-        pb.AnalogPoint(index=12, value=random.uniform(2.0, 5.0), quality=pb.POINT_QUALITY_GOOD),  # THD Corrente C
-        pb.AnalogPoint(index=13, value=random.uniform(0.5, 2.0), quality=pb.POINT_QUALITY_GOOD),  # Deseq. Neg.
-        pb.AnalogPoint(index=14, value=random.uniform(0.5, 2.0), quality=pb.POINT_QUALITY_GOOD),  # Deseq. Zero
-        pb.AnalogPoint(index=15, value=random.gauss(650.0, 5.0), quality=pb.POINT_QUALITY_GOOD),  # Tensao Link CC
-        pb.AnalogPoint(index=16, value=random.gauss(45.0, 3.0), quality=pb.POINT_QUALITY_GOOD),   # Temp. Ponte
-        pb.AnalogPoint(index=17, value=1.0, quality=pb.POINT_QUALITY_GOOD),                       # Estado Operacao
-        pb.AnalogPoint(index=18, value=2.0, quality=pb.POINT_QUALITY_GOOD),                       # Modo Reativo
-        pb.AnalogPoint(index=19, value=0.0, quality=pb.POINT_QUALITY_GOOD),                       # Modo Harmonicos
-        pb.AnalogPoint(index=20, value=0.0, quality=pb.POINT_QUALITY_GOOD),                       # Codigo Falta
+        pb.AnalogPoint(index=idx, value=val, quality=pb.POINT_QUALITY_GOOD)
+        for idx, val in generate_realistic_analogs()
     ]
 
     request = pb.UpdateRequest(analogs=analogs, binaries=binaries)
@@ -286,8 +201,10 @@ def send_custom_binary(stub: pb_grpc.BridgeServiceStub):
         index = int(input("Index (0-10): "))
         if index < 0 or index > 10:
             raise ValueError
-        val_str = input("Value (0/1): ").strip()
-        value = val_str in ("1", "true", "True")
+        val_str = input("Value (0/1): ").strip().lower()
+        if val_str not in ("0", "1", "true", "false"):
+            raise ValueError(f"Unrecognized boolean value: {val_str!r}")
+        value = val_str in ("1", "true")
     except (ValueError, EOFError):
         print("Invalid input.")
         return
@@ -313,7 +230,7 @@ def check_status(stub: pb_grpc.BridgeServiceStub):
 
 
 # ---------------------------------------------------------------------------
-# Auto-pilot mode (original mock_client behavior, minus counters)
+# Auto-pilot mode
 # ---------------------------------------------------------------------------
 def send_updates_auto(stub: pb_grpc.BridgeServiceStub):
     """Send periodic simulated point updates (auto-pilot mode)."""
@@ -343,11 +260,8 @@ def send_updates_auto(stub: pb_grpc.BridgeServiceStub):
 # ---------------------------------------------------------------------------
 def interactive_loop(stub: pb_grpc.BridgeServiceStub):
     """Interactive menu for manual control."""
-    global auto_respond
-
     while not shutdown_event.is_set():
-        with auto_respond_lock:
-            ar_status = "ON" if auto_respond else "OFF"
+        ar_status = "ON" if auto_respond_event.is_set() else "OFF"
 
         print(f"\n=== Python DSP Simulator ===")
         print(f"Commands:")
@@ -376,9 +290,12 @@ def interactive_loop(stub: pb_grpc.BridgeServiceStub):
         elif choice == "4":
             check_status(stub)
         elif choice == "5":
-            with auto_respond_lock:
-                auto_respond = not auto_respond
-                log.info("Auto-respond toggled to %s", "ON" if auto_respond else "OFF")
+            if auto_respond_event.is_set():
+                auto_respond_event.clear()
+                log.info("Auto-respond toggled to OFF")
+            else:
+                auto_respond_event.set()
+                log.info("Auto-respond toggled to ON")
         elif choice in ("q", "Q"):
             shutdown_event.set()
             break

@@ -13,8 +13,8 @@ namespace dnp3sim {
 
 ftxui::Component buildRoot(
     DataModel& model,
-    std::shared_ptr<opendnp3::IMaster>& master,
-    std::shared_ptr<opendnp3::ISOEHandler>& soeHandler,
+    std::shared_ptr<opendnp3::IMaster> master,
+    std::shared_ptr<opendnp3::ISOEHandler> soeHandler,
     ftxui::ScreenInteractive& screen);
 
 } // namespace dnp3sim

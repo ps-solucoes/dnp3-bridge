@@ -82,6 +82,8 @@ int main(int argc, char* argv[])
     auto screen = ftxui::ScreenInteractive::Fullscreen();
     auto notify = [&screen] { screen.PostEvent(ftxui::Event::Custom); };
 
+    // Declared after screen so that implicit Shutdown() in destructor
+    // runs before screen is destroyed (stack LIFO destruction order).
     DNP3Manager manager(1);
 
     auto channelListener = std::make_shared<ChannelListener>(model, notify);
