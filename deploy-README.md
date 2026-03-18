@@ -1,111 +1,101 @@
 # dnp3-bridge — Deployment Package
 
-This package contains three pre-built tools for the DNP3 bridge system. No compilation required.
-
 ## Contents
 
-```
+```bash
 deploy/
 ├── bin/
 │   ├── dnp3-bridge          # Bridge service (gRPC <-> DNP3)
-│   └── dnp3-master-sim      # DNP3 master simulator (TUI)
-├── python-dsp-sim/          # Python DSP simulator
-│   ├── tui.py               # TUI interface (Textual)
-│   ├── dsp_sim.py           # CLI interface (interactive/auto)
+│   ├── dnp3-master-sim      # DNP3 master simulator (TUI)
+│   └── libopendnp3.so       # opendnp3 shared library
+├── python-dsp-sim/          # Python DSP simulator (TUI)
+│   ├── tui.py
 │   ├── setup.sh             # One-time Python setup
 │   └── generated/           # gRPC/protobuf stubs
 └── config.example.json      # Bridge configuration example
 ```
 
-## System Requirements
+## BeagleBone Setup
 
-- **C++ binaries**: Ubuntu 24.04 (or compatible). Requires system libraries:
-  ```bash
-  sudo apt install libgrpc++-dev libprotobuf-dev
-  ```
-- **Python simulator**: Python 3.10+
+Tested on **Debian 13 (Trixie)** — `am335x-debian-13.4-base-v6.12-armhf-2026-03-17`.
 
-## Quick Start
+### 1. Copy files to the BeagleBone
 
-### 1. Set up the Python simulator (one-time)
+```bash
+scp bin/dnp3-bridge bin/dnp3-master-sim bin/libopendnp3.so debian@192.168.7.2:~/
+```
+
+### 2. SSH in and install dependencies
+
+```bash
+ssh debian@192.168.7.2   # password: temppwd
+
+sudo cp ~/libopendnp3.so /usr/local/lib/
+sudo ldconfig
+sudo apt update && sudo apt install -y libgrpc++-dev libprotobuf-dev
+chmod +x ~/dnp3-bridge ~/dnp3-master-sim
+```
+
+### 3. Run the bridge
+
+```bash
+~/dnp3-bridge
+```
+
+The bridge listens on:
+- gRPC: `0.0.0.0:50051`
+- DNP3 outstation: `0.0.0.0:20000`
+
+### 4. Run the DNP3 master simulator (optional, for testing)
+
+In a second SSH session to the BeagleBone:
+
+```bash
+~/dnp3-master-sim
+```
+
+Connects to the bridge's DNP3 port on `127.0.0.1:20000`. Provides an interactive TUI to send polls, CROBs, and analog output commands. Use `--help` for options.
+
+Stop with `Q` or `Ctrl+C`.
+
+## Python TUI (from your PC)
+
+The Python TUI connects to the bridge via gRPC to push point updates and receive SCADA commands.
+
+### One-time setup
 
 ```bash
 cd python-dsp-sim
 bash setup.sh
 ```
 
-### 2. Start the bridge
-
-```bash
-# With defaults (gRPC on :50051, DNP3 on :20000)
-./bin/dnp3-bridge
-
-# With custom config
-./bin/dnp3-bridge config.example.json
-
-# Or override individual settings via environment variables
-DNP3_BRIDGE_LOG_LEVEL=debug ./bin/dnp3-bridge
-```
-
-Stop with `Ctrl+C`.
-
-### 3. Start the DNP3 master simulator
-
-```bash
-# Connect to bridge on localhost (default)
-./bin/dnp3-master-sim
-
-# Connect to a remote bridge
-./bin/dnp3-master-sim --host 192.168.1.10 --port 20000
-```
-
-Options: `--host`, `--port`, `--local-addr`, `--remote-addr` (run with `--help` for details).
-
-### 4. Start the Python DSP simulator
+### Run
 
 ```bash
 cd python-dsp-sim
-
-# TUI (recommended)
-.venv/bin/python3 tui.py
-
-# CLI — interactive menu
-.venv/bin/python3 dsp_sim.py --mode interactive
-
-# CLI — auto-pilot (sends data every 2s, auto-responds to commands)
-.venv/bin/python3 dsp_sim.py --mode auto
+.venv/bin/python3 tui.py --address 192.168.7.2:50051
 ```
 
-Both accept `--address host:port` (default: `localhost:50051`).
+Replace `192.168.7.2` with the BeagleBone's IP. Default is `localhost:50051`.
 
-## Full Test Setup
+## Configuration
 
-Open three terminals to test the complete chain without hardware:
+The bridge can be configured via environment variables or a JSON config file (env vars take precedence).
 
-```
-Terminal 1:  ./bin/dnp3-bridge
-Terminal 2:  ./bin/dnp3-master-sim
-Terminal 3:  cd python-dsp-sim && .venv/bin/python3 tui.py
-```
+```bash
+# Environment variables
+DNP3_BRIDGE_GRPC_ADDRESS=0.0.0.0:50051
+DNP3_BRIDGE_DNP3_PORT=20000
+DNP3_BRIDGE_LOG_LEVEL=info    # trace | debug | info | warn | error
 
-Data flows:
-
-```
-Python sim --gRPC--> dnp3-bridge --DNP3--> Master sim     (point updates)
-Python sim <--gRPC-- dnp3-bridge <--DNP3-- Master sim     (commands)
+# Or pass a JSON config file
+~/dnp3-bridge /path/to/config.json
 ```
 
-## Bridge Configuration
+## Troubleshooting
 
-Edit `config.example.json` or use environment variables (env vars take precedence):
+**`error while loading shared libraries: libopendnp3.so`**
+Run `sudo ldconfig` again, or check `sudo ldconfig -p | grep opendnp3`.
 
-| Variable | Default | Description |
-|---|---|---|
-| `DNP3_BRIDGE_GRPC_ADDRESS` | `0.0.0.0:50051` | gRPC listen address |
-| `DNP3_BRIDGE_DNP3_HOST` | `0.0.0.0` | DNP3 TCP server bind address |
-| `DNP3_BRIDGE_DNP3_PORT` | `20000` | DNP3 TCP server port |
-| `DNP3_BRIDGE_DNP3_LOCAL_ADDR` | `1024` | DNP3 outstation address |
-| `DNP3_BRIDGE_DNP3_REMOTE_ADDR` | `1` | DNP3 master address |
-| `DNP3_BRIDGE_COMMAND_TIMEOUT_MS` | `3000` | Command response timeout (ms) |
-| `DNP3_BRIDGE_LOG_LEVEL` | `info` | Log level (trace/debug/info/warn/error) |
-| `DNP3_BRIDGE_LOG_FILE` | *(disabled)* | Path to rotating log file |
+**Bridge exits immediately with "bind failed"**
+Port 50051 or 20000 is already in use. Check with `ss -tlnp | grep -E '50051|20000'`.
