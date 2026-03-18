@@ -98,7 +98,7 @@ Element buildAnalogTable(const std::string& title,
         Decorator flgDeco = dim;
 
         if (it != points.end() && it->second.received) {
-            valStr = std::format("{:>10.2f}", it->second.value);
+            valStr = std::format("{:>10.0f}", it->second.value);
             valDeco = color(Color::Cyan);
             flgStr = formatFlags(it->second.flags);
             flgDeco = color(flagColor(it->second.flags));
@@ -300,7 +300,7 @@ ftxui::Component buildRoot(
     // --- Analog Output modal ---
     auto analog_input_option = InputOption();
     analog_input_option.multiline = false;
-    auto analog_input = Input(analog_value_str.get(), "0.0", analog_input_option);
+    auto analog_input = Input(analog_value_str.get(), "0", analog_input_option);
 
     auto analog_modal_renderer = Renderer(analog_input,
         [&model, analog_index, analog_value_str, analog_input] {
@@ -334,9 +334,9 @@ ftxui::Component buildRoot(
                 return true;
             }
             if (event == Event::Return) {
-                float val = 0.0f;
+                int16_t val = 0;
                 try {
-                    val = std::stof(*analog_value_str);
+                    val = static_cast<int16_t>(std::stoi(*analog_value_str));
                 } catch (...) {
                     std::lock_guard lock(model.mutex);
                     model.addLog("Invalid analog value");
@@ -346,10 +346,10 @@ ftxui::Component buildRoot(
                 uint16_t idx = static_cast<uint16_t>(*analog_index);
                 {
                     std::lock_guard lock(model.mutex);
-                    model.addLog(std::format("Sending AnalogOutput idx={} ({}) value={:.2f}",
+                    model.addLog(std::format("Sending AnalogOutput idx={} ({}) value={}",
                         idx, pointName(kAnalogOutputNames, idx), val));
                 }
-                master->DirectOperate(opendnp3::AnalogOutputFloat32(val), idx, commandCallback);
+                master->DirectOperate(opendnp3::AnalogOutputInt16(val), idx, commandCallback);
                 *show_analog_modal = false;
                 return true;
             }

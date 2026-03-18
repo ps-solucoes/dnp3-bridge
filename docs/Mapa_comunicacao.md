@@ -51,37 +51,37 @@ Mapeamento dos pontos de comunicação entre Modbus (Python ↔ DSP) e DNP3 (C++
 
 | Endereço | Nome                               | Tipo          |
 | -------- | ---------------------------------- | ------------- |
-| 0        | Referência de Regulação de Tensão  | Float 32 bits |
-| 1        | Limite Corrente Desequilíbrio Neg. | Float 32 bits |
-| 2        | Limite Corrente Desequilíbrio Zero | Float 32 bits |
-| 3        | Limite Corrente Reativo            | Float 32 bits |
-| 4        | Limite Corrente Harmônico          | Float 32 bits |
+| 0        | Referência de Regulação de Tensão  | Int 16 bits |
+| 1        | Limite Corrente Desequilíbrio Neg. | Int 16 bits |
+| 2        | Limite Corrente Desequilíbrio Zero | Int 16 bits |
+| 3        | Limite Corrente Reativo            | Int 16 bits |
+| 4        | Limite Corrente Harmônico          | Int 16 bits |
 
 ### Input Registers (somente leitura)
 
 | Endereço | Nome                       | Tipo               |
 | -------- | -------------------------- | ------------------ |
-| 0        | Tensão Fase A              | Float 32 bits      |
-| 1        | Tensão Fase B              | Float 32 bits      |
-| 2        | Tensão Fase C              | Float 32 bits      |
-| 3        | Corrente Fase A            | Float 32 bits      |
-| 4        | Corrente Fase B            | Float 32 bits      |
-| 5        | Corrente Fase C            | Float 32 bits      |
-| 6        | Corrente Neutro            | Float 32 bits      |
-| 7        | THD Tensão Fase A          | Float 32 bits      |
-| 8        | THD Tensão Fase B          | Float 32 bits      |
-| 9        | THD Tensão Fase C          | Float 32 bits      |
-| 10       | THD Corrente Fase A        | Float 32 bits      |
-| 11       | THD Corrente Fase B        | Float 32 bits      |
-| 12       | THD Corrente Fase C        | Float 32 bits      |
-| 13       | Desequilíbrio Negativo     | Float 32 bits      |
-| 14       | Desequilíbrio Zero         | Float 32 bits      |
-| 15       | Tensão Link CC             | Float 32 bits      |
-| 16       | Temperatura Ponte          | Float 32 bits      |
+| 0        | Tensão Fase A              | Int 16 bits      |
+| 1        | Tensão Fase B              | Int 16 bits      |
+| 2        | Tensão Fase C              | Int 16 bits      |
+| 3        | Corrente Fase A            | Int 16 bits      |
+| 4        | Corrente Fase B            | Int 16 bits      |
+| 5        | Corrente Fase C            | Int 16 bits      |
+| 6        | Corrente Neutro            | Int 16 bits      |
+| 7        | THD Tensão Fase A          | Int 16 bits      |
+| 8        | THD Tensão Fase B          | Int 16 bits      |
+| 9        | THD Tensão Fase C          | Int 16 bits      |
+| 10       | THD Corrente Fase A        | Int 16 bits      |
+| 11       | THD Corrente Fase B        | Int 16 bits      |
+| 12       | THD Corrente Fase C        | Int 16 bits      |
+| 13       | Desequilíbrio Negativo     | Int 16 bits      |
+| 14       | Desequilíbrio Zero         | Int 16 bits      |
+| 15       | Tensão Link CC             | Int 16 bits      |
+| 16       | Temperatura Ponte          | Int 16 bits      |
 | 17       | Estado Atual de Operação   | Unsigned Int 32 bits |
-| 18       | Modo Reativo               | Unsigned Int 32 bits |
-| 19       | Modo Harmônicos            | Unsigned Int 32 bits |
-| 20       | Código de Falta            | Unsigned Int 32 bits |
+| 19       | Modo Reativo               | Unsigned Int 32 bits |
+| 21       | Modo Harmônicos            | Unsigned Int 32 bits |
+| 23       | Código de Falta            | Unsigned Int 32 bits |
 
 ---
 
@@ -151,29 +151,29 @@ Comandos enviados pelo SCADA. 20 pontos.
 
 Medições e estados do equipamento. 21 pontos.
 
-| Id | Informação                     | Classe   | Tipo                     |
-| -- | ------------------------------ | -------- | ------------------------ |
-| 0  | Tensão Fase A                  | Classe 0 | 32-bit (float)           |
-| 1  | Tensão Fase B                  | Classe 0 | 32-bit (float)           |
-| 2  | Tensão Fase C                  | Classe 0 | 32-bit (float)           |
-| 3  | Corrente Fase A                | Classe 0 | 32-bit (float)           |
-| 4  | Corrente Fase B                | Classe 0 | 32-bit (float)           |
-| 5  | Corrente Fase C                | Classe 0 | 32-bit (float)           |
-| 6  | Corrente Neutro                | Classe 0 | 32-bit (float)           |
-| 7  | THD Tensão Fase A              | Classe 0 | 32-bit (float)           |
-| 8  | THD Tensão Fase B              | Classe 0 | 32-bit (float)           |
-| 9  | THD Tensão Fase C              | Classe 0 | 32-bit (float)           |
-| 10 | THD Corrente Fase A            | Classe 0 | 32-bit (float)           |
-| 11 | THD Corrente Fase B            | Classe 0 | 32-bit (float)           |
-| 12 | THD Corrente Fase C            | Classe 0 | 32-bit (float)           |
-| 13 | Desequilíbrio Negativo         | Classe 0 | 32-bit (float)           |
-| 14 | Desequilíbrio Zero             | Classe 0 | 32-bit (float)           |
-| 15 | Tensão Link CC                 | Classe 0 | 32-bit (float)           |
-| 16 | Temperatura Ponte              | Classe 0 | 32-bit (float)           |
-| 17 | Estado Atual de Operação       | Classe 1 | 16-bit (inteiro sem sinal) |
-| 18 | Modo Reativo                   | Classe 1 | 16-bit (inteiro sem sinal) |
-| 19 | Modo Harmônicos                | Classe 1 | 16-bit (inteiro sem sinal) |
-| 20 | Código de Falta                | Classe 1 | 16-bit (inteiro sem sinal) |
+| Id | Informação                     | Classe   | Tipo             |
+| -- | ------------------------------ | -------- | ---------------- |
+| 0  | Tensão Fase A                  | Classe 2 | 16-bit (inteiro) |
+| 1  | Tensão Fase B                  | Classe 2 | 16-bit (inteiro) |
+| 2  | Tensão Fase C                  | Classe 2 | 16-bit (inteiro) |
+| 3  | Corrente Fase A                | Classe 2 | 16-bit (inteiro) |
+| 4  | Corrente Fase B                | Classe 2 | 16-bit (inteiro) |
+| 5  | Corrente Fase C                | Classe 2 | 16-bit (inteiro) |
+| 6  | Corrente Neutro                | Classe 2 | 16-bit (inteiro) |
+| 7  | THD Tensão Fase A              | Classe 2 | 16-bit (inteiro) |
+| 8  | THD Tensão Fase B              | Classe 2 | 16-bit (inteiro) |
+| 9  | THD Tensão Fase C              | Classe 2 | 16-bit (inteiro) |
+| 10 | THD Corrente Fase A            | Classe 2 | 16-bit (inteiro) |
+| 11 | THD Corrente Fase B            | Classe 2 | 16-bit (inteiro) |
+| 12 | THD Corrente Fase C            | Classe 2 | 16-bit (inteiro) |
+| 13 | Desequilíbrio Negativo         | Classe 2 | 16-bit (inteiro) |
+| 14 | Desequilíbrio Zero             | Classe 2 | 16-bit (inteiro) |
+| 15 | Tensão Link CC                 | Classe 2 | 16-bit (inteiro) |
+| 16 | Temperatura Ponte              | Classe 2 | 16-bit (inteiro) |
+| 17 | Estado Atual de Operação       | Classe 2 | 16-bit (inteiro) |
+| 18 | Modo Reativo                   | Classe 2 | 16-bit (inteiro) |
+| 19 | Modo Harmônicos                | Classe 2 | 16-bit (inteiro) |
+| 20 | Código de Falta                | Classe 2 | 16-bit (inteiro) |
 
 ---
 
@@ -181,10 +181,10 @@ Medições e estados do equipamento. 21 pontos.
 
 Setpoints enviados pelo SCADA. 5 pontos.
 
-| Id | Informação                         | Classe   | Tipo           |
-| -- | ---------------------------------- | -------- | -------------- |
-| 0  | Referência de Regulação de Tensão  | Classe 2 | 32-bit (float) |
-| 1  | Limite Corrente Desequilíbrio Neg. | Classe 2 | 32-bit (float) |
-| 2  | Limite Corrente Desequilíbrio Zero | Classe 2 | 32-bit (float) |
-| 3  | Limite Corrente Reativo            | Classe 2 | 32-bit (float) |
-| 4  | Limite Corrente Harmônico          | Classe 2 | 32-bit (float) |
+| Id | Informação                         | Classe   | Tipo             |
+| -- | ---------------------------------- | -------- | ---------------- |
+| 0  | Referência de Regulação de Tensão  | Classe 2 | 16-bit (inteiro) |
+| 1  | Limite Corrente Desequilíbrio Neg. | Classe 2 | 16-bit (inteiro) |
+| 2  | Limite Corrente Desequilíbrio Zero | Classe 2 | 16-bit (inteiro) |
+| 3  | Limite Corrente Reativo            | Classe 2 | 16-bit (inteiro) |
+| 4  | Limite Corrente Harmônico          | Classe 2 | 16-bit (inteiro) |

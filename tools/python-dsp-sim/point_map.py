@@ -97,28 +97,28 @@ REALISTIC_BINARY_DEFAULTS: dict[int, bool] = {
 }
 
 
-def generate_realistic_analogs() -> list[tuple[int, float]]:
-    """Generate realistic analog point values."""
+def generate_realistic_analogs() -> list[tuple[int, int]]:
+    """Generate realistic analog point values (16-bit integers)."""
     return [
-        (0, random.gauss(220.0, 2.0)),
-        (1, random.gauss(220.0, 2.0)),
-        (2, random.gauss(220.0, 2.0)),
-        (3, random.gauss(15.0, 1.0)),
-        (4, random.gauss(15.0, 1.0)),
-        (5, random.gauss(15.0, 1.0)),
-        (6, random.gauss(0.5, 0.1)),
-        (7, random.uniform(2.0, 5.0)),
-        (8, random.uniform(2.0, 5.0)),
-        (9, random.uniform(2.0, 5.0)),
-        (10, random.uniform(2.0, 5.0)),
-        (11, random.uniform(2.0, 5.0)),
-        (12, random.uniform(2.0, 5.0)),
-        (13, random.uniform(0.5, 2.0)),
-        (14, random.uniform(0.5, 2.0)),
-        (15, random.gauss(650.0, 5.0)),
-        (16, random.gauss(45.0, 3.0)),
-        (17, 1.0),
-        (18, 2.0),
-        (19, 0.0),
-        (20, 0.0),
+        (0, round(random.gauss(220.0, 2.0))),
+        (1, round(random.gauss(220.0, 2.0))),
+        (2, round(random.gauss(220.0, 2.0))),
+        (3, round(random.gauss(15.0, 1.0))),
+        (4, round(random.gauss(15.0, 1.0))),
+        (5, round(random.gauss(15.0, 1.0))),
+        (6, round(random.gauss(1.0, 0.1))),
+        (7, round(random.uniform(2.0, 5.0))),
+        (8, round(random.uniform(2.0, 5.0))),
+        (9, round(random.uniform(2.0, 5.0))),
+        (10, round(random.uniform(2.0, 5.0))),
+        (11, round(random.uniform(2.0, 5.0))),
+        (12, round(random.uniform(2.0, 5.0))),
+        (13, round(random.uniform(1.0, 2.0))),
+        (14, round(random.uniform(1.0, 2.0))),
+        (15, round(random.gauss(650.0, 5.0))),
+        (16, round(random.gauss(45.0, 3.0))),
+        (17, 1),
+        (18, 2),
+        (19, 0),
+        (20, 0),
     ]

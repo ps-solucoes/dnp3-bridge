@@ -134,7 +134,7 @@ class AnalogInputModal(ModalScreen[tuple[int, float] | None]):
         with Vertical(id="analog-modal-container"):
             yield Label("Send Custom Analog Input")
             yield Select(options, prompt="Select point index", id="analog-select")
-            yield Input(placeholder="Enter value (float)", id="analog-value")
+            yield Input(placeholder="Enter value (integer)", id="analog-value")
             with Horizontal(id="analog-modal-buttons"):
                 yield Button("Send", variant="primary", id="analog-send")
                 yield Button("Cancel", variant="default", id="analog-cancel")
@@ -144,7 +144,7 @@ class AnalogInputModal(ModalScreen[tuple[int, float] | None]):
         if select.value is Select.BLANK:
             return
         try:
-            value = float(self.query_one("#analog-value", Input).value)
+            value = int(self.query_one("#analog-value", Input).value)
         except ValueError:
             return
         self.dismiss((select.value, value))

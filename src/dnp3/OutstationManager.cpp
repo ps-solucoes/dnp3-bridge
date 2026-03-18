@@ -51,21 +51,20 @@ void OutstationManager::start() {
         pt.clazz = opendnp3::PointClass::Class0;
     }
 
-    // Analog Input: 21 points (indices 0-20)
-    //   0-16: Class 0 (static only), 17-20: Class 1
-    for (uint16_t i = 0; i <= 16; ++i) {
+    // Analog Input: 21 points (indices 0-20), all Class 2, 16-bit integer
+    for (uint16_t i = 0; i <= 20; ++i) {
         auto& pt = db_config.analog_input[i];
-        pt.clazz = opendnp3::PointClass::Class0;
-    }
-    for (uint16_t i = 17; i <= 20; ++i) {
-        auto& pt = db_config.analog_input[i];
-        pt.clazz = opendnp3::PointClass::Class1;
+        pt.clazz = opendnp3::PointClass::Class2;
+        pt.svariation = opendnp3::StaticAnalogVariation::Group30Var2;
+        pt.evariation = opendnp3::EventAnalogVariation::Group32Var2;
     }
 
-    // Analog Output Status: 5 points (indices 0-4), all Class 2
+    // Analog Output Status: 5 points (indices 0-4), all Class 2, 16-bit integer
     for (uint16_t i = 0; i <= 4; ++i) {
         auto& pt = db_config.analog_output_status[i];
         pt.clazz = opendnp3::PointClass::Class2;
+        pt.svariation = opendnp3::StaticAnalogOutputStatusVariation::Group40Var2;
+        pt.evariation = opendnp3::EventAnalogOutputStatusVariation::Group42Var2;
     }
 
     // All other types (double binary, counter, frozen counter,
@@ -74,6 +73,16 @@ void OutstationManager::start() {
     spdlog::debug("Outstation database configured: 11 BI, 20 BO, 21 AI, 5 AO");
 
     opendnp3::OutstationStackConfig stack_cfg(std::move(db_config));
+    stack_cfg.outstation.eventBufferConfig = opendnp3::EventBufferConfig(
+        11,  // maxBinaryEvents (11 binary inputs)
+        0,   // maxDoubleBinaryEvents
+        21,  // maxAnalogEvents (21 analog inputs)
+        0,   // maxCounterEvents
+        0,   // maxFrozenCounterEvents
+        20,  // maxBinaryOutputStatusEvents (20 binary outputs)
+        5,   // maxAnalogOutputStatusEvents (5 analog outputs)
+        0    // maxOctetStringEvents
+    );
     stack_cfg.outstation.params.allowUnsolicited = true;
     stack_cfg.link.LocalAddr  = cfg_.dnp3_local_address;
     stack_cfg.link.RemoteAddr = cfg_.dnp3_remote_address;
