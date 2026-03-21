@@ -122,20 +122,22 @@ Status de leitura do equipamento. 11 pontos.
 
 Comandos enviados pelo SCADA. 20 pontos.
 
+> **Nota**: Todos os Binary Output são Classe 0 (sem geração de eventos/UR) conforme requisito CEMIG (REQ-02).
+
 | Id | Informação                     | Classe   | Tipo    |
 | -- | ------------------------------ | -------- | ------- |
-| 0  | Conectar Equipamento           | Classe 1 | Binária |
-| 1  | Desconectar Equipamento        | Classe 1 | Binária |
-| 2  | Reset Proteção                 | Classe 1 | Binária |
-| 3  | Emergência                     | Classe 1 | Binária |
-| 4  | Ativa Desequilíbrio            | Classe 1 | Binária |
-| 5  | Desativa Desequilíbrio         | Classe 1 | Binária |
-| 6  | Ativa Suporte de Tensão        | Classe 1 | Binária |
-| 7  | Desativa Suporte de Tensão     | Classe 1 | Binária |
-| 8  | Ativa Regulação de Tensão      | Classe 1 | Binária |
-| 9  | Desativa Regulação de Tensão   | Classe 1 | Binária |
-| 10 | Ativa Compensação Harmônica    | Classe 1 | Binária |
-| 11 | Desativa Compensação Harmônica | Classe 1 | Binária |
+| 0  | Conectar Equipamento           | Classe 0 | Binária |
+| 1  | Desconectar Equipamento        | Classe 0 | Binária |
+| 2  | Reset Proteção                 | Classe 0 | Binária |
+| 3  | Emergência                     | Classe 0 | Binária |
+| 4  | Ativa Desequilíbrio            | Classe 0 | Binária |
+| 5  | Desativa Desequilíbrio         | Classe 0 | Binária |
+| 6  | Ativa Suporte de Tensão        | Classe 0 | Binária |
+| 7  | Desativa Suporte de Tensão     | Classe 0 | Binária |
+| 8  | Ativa Regulação de Tensão      | Classe 0 | Binária |
+| 9  | Desativa Regulação de Tensão   | Classe 0 | Binária |
+| 10 | Ativa Compensação Harmônica    | Classe 0 | Binária |
+| 11 | Desativa Compensação Harmônica | Classe 0 | Binária |
 | 12 | Compensa Harmônica 3           | Classe 0 | Binária |
 | 13 | Compensa Harmônica 5           | Classe 0 | Binária |
 | 14 | Compensa Harmônica 7           | Classe 0 | Binária |

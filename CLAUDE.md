@@ -112,10 +112,29 @@ Loaded from JSON config file (optional CLI arg), then environment variables over
 | `DNP3_BRIDGE_DNP3_LOCAL_ADDR` | `dnp3_local_address` | `1024` |
 | `DNP3_BRIDGE_DNP3_REMOTE_ADDR` | `dnp3_remote_address` | `1` |
 | `DNP3_BRIDGE_COMMAND_TIMEOUT_MS` | `command_timeout_ms` | `3000` |
+| `DNP3_BRIDGE_COMMAND_MODE` | `command_mode` | `direct_operate` |
 | `DNP3_BRIDGE_LOG_LEVEL` | `log_level` | `info` |
 | `DNP3_BRIDGE_LOG_FILE` | `log_file` | *(empty — disabled)* |
 | `DNP3_BRIDGE_LOG_MAX_SIZE_MB` | `log_max_size_mb` | `5` |
 | `DNP3_BRIDGE_LOG_MAX_FILES` | `log_max_files` | `3` |
+
+### DNP3 Configuration (JSON only, no env var override)
+
+These sections are configured in the JSON config file only. See `config.example.json` for a full example.
+
+**`unsolicited`** — Controls unsolicited response behavior:
+- `enabled` (bool, default: `true`) — enable/disable URs globally
+- `class_mask` (array, default: `["class1", "class2"]`) — which classes trigger URs
+
+**`event_buffer`** — Event buffer sizes (minimum 100 total per CEMIG):
+- `max_binary_events` (default: `50`), `max_analog_events` (default: `50`), others default to `0`
+
+**`point_database`** — Per-point DNP3 database configuration. Entries support `"index": N` (single point) or `"range": [start, end]` (inclusive range). Each entry can set:
+- `class` — event class (`"class0"`, `"class1"`, `"class2"`, `"class3"`)
+- `deadband` — analog deadband threshold (double, default: `0.0`)
+- `static_variation` / `event_variation` — DNP3 object variations (e.g., `"Group30Var2"`)
+
+When `point_database` is absent, hardcoded defaults are used (11 BI, 20 BO, 21 AI, 5 AO).
 
 ## Simulators
 

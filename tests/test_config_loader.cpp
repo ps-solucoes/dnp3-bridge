@@ -220,6 +220,132 @@ TEST_CASE("ConfigLoader") {
         CHECK(result->grpc_listen_address == "from-env:9999");
     }
 
+    SUBCASE("command_mode parsed from JSON") {
+        unsetenv("DNP3_BRIDGE_COMMAND_MODE");
+
+        TempJsonFile file{R"({
+            "command_mode": "select_before_operate"
+        })"};
+
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        CHECK(result->command_mode == "select_before_operate");
+    }
+
+    SUBCASE("command_mode defaults to direct_operate") {
+        unsetenv("DNP3_BRIDGE_COMMAND_MODE");
+
+        auto result = ConfigLoader::load();
+        REQUIRE(result.has_value());
+        CHECK(result->command_mode == "direct_operate");
+    }
+
+    SUBCASE("command_mode env var overrides JSON") {
+        TempJsonFile file{R"({
+            "command_mode": "select_before_operate"
+        })"};
+
+        ScopedEnv env{"DNP3_BRIDGE_COMMAND_MODE", "direct_operate"};
+
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        CHECK(result->command_mode == "direct_operate");
+    }
+
+    SUBCASE("event_buffer parsed from JSON") {
+        TempJsonFile file{R"({
+            "event_buffer": {
+                "max_binary_events": 100,
+                "max_analog_events": 75,
+                "max_binary_output_status_events": 10
+            }
+        })"};
+
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        CHECK(result->event_buffer.max_binary_events == 100);
+        CHECK(result->event_buffer.max_analog_events == 75);
+        CHECK(result->event_buffer.max_binary_output_status_events == 10);
+        CHECK(result->event_buffer.max_analog_output_status_events == 0); // default
+    }
+
+    SUBCASE("unsolicited parsed from JSON") {
+        TempJsonFile file{R"({
+            "unsolicited": {
+                "enabled": false,
+                "class_mask": ["class1"]
+            }
+        })"};
+
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        CHECK(result->unsolicited.enabled == false);
+        REQUIRE(result->unsolicited.class_mask.size() == 1);
+        CHECK(result->unsolicited.class_mask[0] == "class1");
+    }
+
+    SUBCASE("unsolicited defaults") {
+        auto result = ConfigLoader::load();
+        REQUIRE(result.has_value());
+        CHECK(result->unsolicited.enabled == true);
+        REQUIRE(result->unsolicited.class_mask.size() == 2);
+        CHECK(result->unsolicited.class_mask[0] == "class1");
+        CHECK(result->unsolicited.class_mask[1] == "class2");
+    }
+
+    SUBCASE("point_database with range syntax") {
+        TempJsonFile file{R"({
+            "point_database": {
+                "binary_input": [
+                    { "range": [0, 10], "class": "class1" }
+                ],
+                "analog_input": [
+                    { "range": [0, 20], "class": "class2", "deadband": 1.5,
+                      "static_variation": "Group30Var2", "event_variation": "Group32Var2" }
+                ]
+            }
+        })"};
+
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        CHECK_FALSE(result->point_database.empty());
+
+        REQUIRE(result->point_database.binary_input.size() == 1);
+        CHECK(result->point_database.binary_input[0].start == 0);
+        CHECK(result->point_database.binary_input[0].end == 10);
+        CHECK(result->point_database.binary_input[0].event_class == "class1");
+
+        REQUIRE(result->point_database.analog_input.size() == 1);
+        CHECK(result->point_database.analog_input[0].start == 0);
+        CHECK(result->point_database.analog_input[0].end == 20);
+        CHECK(result->point_database.analog_input[0].deadband == 1.5);
+        CHECK(result->point_database.analog_input[0].static_variation == "Group30Var2");
+    }
+
+    SUBCASE("point_database with single index syntax") {
+        TempJsonFile file{R"({
+            "point_database": {
+                "binary_input": [
+                    { "index": 5, "class": "class3" }
+                ]
+            }
+        })"};
+
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        REQUIRE(result->point_database.binary_input.size() == 1);
+        CHECK(result->point_database.binary_input[0].start == 5);
+        CHECK(result->point_database.binary_input[0].end == 5);
+        CHECK(result->point_database.binary_input[0].event_class == "class3");
+    }
+
+    SUBCASE("point_database empty when not specified") {
+        TempJsonFile file{R"({})"};
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        CHECK(result->point_database.empty());
+    }
+
     SUBCASE("numeric env var overrides JSON") {
         unsetenv("DNP3_BRIDGE_GRPC_ADDRESS");
         unsetenv("DNP3_BRIDGE_DNP3_HOST");

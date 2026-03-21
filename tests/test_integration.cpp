@@ -227,7 +227,7 @@ struct IntegrationFixture {
         return soe->waitForData(timeout);
     }
 
-    // Send a CROB via SelectAndOperate.
+    // Send a CROB via DirectOperate (default command mode).
     struct CommandResult {
         opendnp3::TaskCompletion summary;
         opendnp3::CommandStatus status;
@@ -238,7 +238,7 @@ struct IntegrationFixture {
         CommandResult result{};
         std::promise<void> done;
 
-        master->SelectAndOperate(
+        master->DirectOperate(
             opendnp3::ControlRelayOutputBlock(op),
             index,
             [&](const opendnp3::ICommandTaskResult& r) {
@@ -527,6 +527,35 @@ TEST_CASE("Integration: bridge survives Python disconnect and reconnect") {
         CHECK(r3.summary == opendnp3::TaskCompletion::SUCCESS);
         CHECK(r3.status == opendnp3::CommandStatus::SUCCESS);
     }
+}
+
+TEST_CASE("Integration: rapid binary updates are all captured by outstation") {
+    IntegrationFixture fix;
+
+    // Send 20 rapid binary updates toggling BI-0 (each toggle generates an event
+    // since BI is Class 1). This validates event buffer capacity and that the
+    // bridge queue + flush thread can handle rapid updates without data loss.
+    for (int i = 0; i < 20; ++i) {
+        dnp3bridge::v1::UpdateRequest req;
+        auto* b = req.add_binaries();
+        b->set_index(0);
+        b->set_value(i % 2 == 0);
+        b->set_quality(dnp3bridge::v1::POINT_QUALITY_GOOD);
+        REQUIRE(fix.sendUpdate(req));
+    }
+
+    // Wait for flush, then poll.
+    std::this_thread::sleep_for(1s);
+    REQUIRE(fix.poll());
+
+    // The final value of BI-0 should be the last update (i=19, value=false since 19%2!=0).
+    auto binaries = fix.soe->getBinaries();
+    std::optional<bool> bi0;
+    for (auto& b : binaries) {
+        if (b.index == 0) bi0 = b.value;
+    }
+    REQUIRE(bi0.has_value());
+    CHECK(bi0.value() == false);
 }
 
 TEST_CASE("Integration: GetStatus reports connection state and timestamp") {

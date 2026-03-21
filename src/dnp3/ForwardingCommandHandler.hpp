@@ -12,11 +12,13 @@
 
 namespace dnp3bridge::dnp3 {
 
+enum class CommandMode { DirectOperate, SelectBeforeOperate };
+
 class ForwardingCommandHandler : public opendnp3::ICommandHandler {
 public:
-    explicit ForwardingCommandHandler(CommandDispatcher& dispatcher);
+    ForwardingCommandHandler(CommandDispatcher& dispatcher, CommandMode mode);
 
-    static std::shared_ptr<ICommandHandler> Create(CommandDispatcher& dispatcher);
+    static std::shared_ptr<ICommandHandler> Create(CommandDispatcher& dispatcher, CommandMode mode);
 
     void Begin() override {}
     void End() override {}
@@ -51,6 +53,7 @@ private:
                                             dnp3bridge::v1::CommandType type);
 
     CommandDispatcher& dispatcher_;
+    CommandMode mode_;
 };
 
 } // namespace dnp3bridge::dnp3

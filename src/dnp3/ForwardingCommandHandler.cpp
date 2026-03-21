@@ -21,12 +21,13 @@ dnp3bridge::v1::CrobOperationType toCrobOperation(opendnp3::OperationType op) {
 
 } // anonymous namespace
 
-ForwardingCommandHandler::ForwardingCommandHandler(CommandDispatcher& dispatcher)
+ForwardingCommandHandler::ForwardingCommandHandler(CommandDispatcher& dispatcher, CommandMode mode)
     : dispatcher_{dispatcher}
+    , mode_{mode}
 {}
 
-std::shared_ptr<opendnp3::ICommandHandler> ForwardingCommandHandler::Create(CommandDispatcher& dispatcher) {
-    return std::make_shared<ForwardingCommandHandler>(dispatcher);
+std::shared_ptr<opendnp3::ICommandHandler> ForwardingCommandHandler::Create(CommandDispatcher& dispatcher, CommandMode mode) {
+    return std::make_shared<ForwardingCommandHandler>(dispatcher, mode);
 }
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,9 @@ std::shared_ptr<opendnp3::ICommandHandler> ForwardingCommandHandler::Create(Comm
 opendnp3::CommandStatus ForwardingCommandHandler::Select(
     const opendnp3::ControlRelayOutputBlock& /*command*/, uint16_t /*index*/)
 {
-    return opendnp3::CommandStatus::SUCCESS;
+    return mode_ == CommandMode::DirectOperate
+        ? opendnp3::CommandStatus::NOT_SUPPORTED
+        : opendnp3::CommandStatus::SUCCESS;
 }
 
 opendnp3::CommandStatus ForwardingCommandHandler::Operate(
@@ -72,7 +75,9 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
 opendnp3::CommandStatus ForwardingCommandHandler::Select(
     const opendnp3::AnalogOutputInt16& /*command*/, uint16_t /*index*/)
 {
-    return opendnp3::CommandStatus::SUCCESS;
+    return mode_ == CommandMode::DirectOperate
+        ? opendnp3::CommandStatus::NOT_SUPPORTED
+        : opendnp3::CommandStatus::SUCCESS;
 }
 
 opendnp3::CommandStatus ForwardingCommandHandler::Operate(
@@ -90,7 +95,9 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
 opendnp3::CommandStatus ForwardingCommandHandler::Select(
     const opendnp3::AnalogOutputInt32& /*command*/, uint16_t /*index*/)
 {
-    return opendnp3::CommandStatus::SUCCESS;
+    return mode_ == CommandMode::DirectOperate
+        ? opendnp3::CommandStatus::NOT_SUPPORTED
+        : opendnp3::CommandStatus::SUCCESS;
 }
 
 opendnp3::CommandStatus ForwardingCommandHandler::Operate(
@@ -108,7 +115,9 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
 opendnp3::CommandStatus ForwardingCommandHandler::Select(
     const opendnp3::AnalogOutputFloat32& /*command*/, uint16_t /*index*/)
 {
-    return opendnp3::CommandStatus::SUCCESS;
+    return mode_ == CommandMode::DirectOperate
+        ? opendnp3::CommandStatus::NOT_SUPPORTED
+        : opendnp3::CommandStatus::SUCCESS;
 }
 
 opendnp3::CommandStatus ForwardingCommandHandler::Operate(
@@ -126,7 +135,9 @@ opendnp3::CommandStatus ForwardingCommandHandler::Operate(
 opendnp3::CommandStatus ForwardingCommandHandler::Select(
     const opendnp3::AnalogOutputDouble64& /*command*/, uint16_t /*index*/)
 {
-    return opendnp3::CommandStatus::SUCCESS;
+    return mode_ == CommandMode::DirectOperate
+        ? opendnp3::CommandStatus::NOT_SUPPORTED
+        : opendnp3::CommandStatus::SUCCESS;
 }
 
 opendnp3::CommandStatus ForwardingCommandHandler::Operate(

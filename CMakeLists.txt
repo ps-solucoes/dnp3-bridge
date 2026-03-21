@@ -159,6 +159,7 @@ set(BRIDGE_TEST_LIBS
 add_executable(dnp3-bridge-tests
     tests/test_main.cpp
     tests/test_command_dispatcher.cpp
+    tests/test_command_handler.cpp
     tests/test_config_loader.cpp
     tests/test_bridge.cpp
     tests/test_point_map.cpp

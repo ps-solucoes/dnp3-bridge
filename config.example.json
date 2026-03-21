@@ -5,5 +5,35 @@
     "dnp3_local_address": 1024,
     "dnp3_remote_address": 1,
     "log_level": "info",
-    "command_timeout_ms": 3000
+    "command_timeout_ms": 3000,
+    "command_mode": "direct_operate",
+
+    "unsolicited": {
+        "enabled": true,
+        "class_mask": ["class1", "class2"]
+    },
+
+    "event_buffer": {
+        "max_binary_events": 50,
+        "max_analog_events": 50,
+        "max_binary_output_status_events": 0,
+        "max_analog_output_status_events": 0
+    },
+
+    "point_database": {
+        "binary_input": [
+            { "range": [0, 10], "class": "class1" }
+        ],
+        "binary_output_status": [
+            { "range": [0, 19], "class": "class0" }
+        ],
+        "analog_input": [
+            { "range": [0, 20], "class": "class2", "deadband": 1.0,
+              "static_variation": "Group30Var2", "event_variation": "Group32Var2" }
+        ],
+        "analog_output_status": [
+            { "range": [0, 4], "class": "class2",
+              "static_variation": "Group40Var2", "event_variation": "Group42Var2" }
+        ]
+    }
 }
