@@ -43,6 +43,7 @@ chmod +x ~/dnp3-bridge ~/dnp3-master-sim
 ```
 
 The bridge listens on:
+
 - gRPC: `0.0.0.0:50051`
 - DNP3 outstation: `0.0.0.0:20000`
 
