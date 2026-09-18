@@ -145,22 +145,22 @@ void configureDefaultDatabase(opendnp3::DatabaseConfig& db_config) {
 void configureDatabaseFromConfig(opendnp3::DatabaseConfig& db_config,
                                   const config::PointDatabaseConfig& pt_cfg) {
     for (const auto& pc : pt_cfg.binary_input) {
-        for (uint16_t i = pc.start; i <= pc.end; ++i) {
-            auto& pt = db_config.binary_input[i];
+        for (std::uint32_t i = pc.start; i <= pc.end; ++i) {
+            auto& pt = db_config.binary_input[static_cast<std::uint16_t>(i)];
             if (!pc.event_class.empty()) pt.clazz = toEnum(pc.event_class, opendnp3::PointClass::Class1);
         }
     }
 
     for (const auto& pc : pt_cfg.binary_output_status) {
-        for (uint16_t i = pc.start; i <= pc.end; ++i) {
-            auto& pt = db_config.binary_output_status[i];
+        for (std::uint32_t i = pc.start; i <= pc.end; ++i) {
+            auto& pt = db_config.binary_output_status[static_cast<std::uint16_t>(i)];
             if (!pc.event_class.empty()) pt.clazz = toEnum(pc.event_class, opendnp3::PointClass::Class1);
         }
     }
 
     for (const auto& pc : pt_cfg.analog_input) {
-        for (uint16_t i = pc.start; i <= pc.end; ++i) {
-            auto& pt = db_config.analog_input[i];
+        for (std::uint32_t i = pc.start; i <= pc.end; ++i) {
+            auto& pt = db_config.analog_input[static_cast<std::uint16_t>(i)];
             if (!pc.event_class.empty()) pt.clazz = toEnum(pc.event_class, opendnp3::PointClass::Class1);
             if (pc.deadband)             pt.deadband = *pc.deadband;
             if (!pc.static_variation.empty()) pt.svariation = toEnum(pc.static_variation, opendnp3::StaticAnalogVariation::Group30Var1);
@@ -169,8 +169,8 @@ void configureDatabaseFromConfig(opendnp3::DatabaseConfig& db_config,
     }
 
     for (const auto& pc : pt_cfg.analog_output_status) {
-        for (uint16_t i = pc.start; i <= pc.end; ++i) {
-            auto& pt = db_config.analog_output_status[i];
+        for (std::uint32_t i = pc.start; i <= pc.end; ++i) {
+            auto& pt = db_config.analog_output_status[static_cast<std::uint16_t>(i)];
             if (!pc.event_class.empty()) pt.clazz = toEnum(pc.event_class, opendnp3::PointClass::Class1);
             if (pc.deadband)             pt.deadband = *pc.deadband;
             if (!pc.static_variation.empty()) pt.svariation = toEnum(pc.static_variation, opendnp3::StaticAnalogOutputStatusVariation::Group40Var1);
@@ -277,6 +277,18 @@ std::string unknownValue(const std::string& field, const std::string& value) {
                        field, value, fmt::join(names, ", "));
 }
 
+/// A reversed range silently configures nothing, and every update to those
+/// points is then dropped by opendnp3 without a diagnostic.
+auto checkRange(const config::PointConfig& pc, const std::string& prefix)
+    -> std::expected<void, std::string>
+{
+    if (pc.start > pc.end) {
+        return std::unexpected{fmt::format(
+            "{}.range: start {} is greater than end {}", prefix, pc.start, pc.end)};
+    }
+    return {};
+}
+
 /// Checks one optional enum-valued string, if it was set at all.
 template <typename E>
 auto checkEnum(const std::string& value, const std::string& field)
@@ -294,6 +306,7 @@ auto checkAnalogSection(const std::vector<config::PointConfig>& entries, const c
 {
     for (std::size_t i = 0; i < entries.size(); ++i) {
         const auto prefix = fmt::format("point_database.{}[{}]", section, i);
+        if (auto r = checkRange(entries[i], prefix); !r) return r;
         if (auto r = checkEnum<opendnp3::PointClass>(entries[i].event_class, prefix + ".class"); !r)
             return r;
         if (auto r = checkEnum<StaticVar>(entries[i].static_variation, prefix + ".static_variation"); !r)
@@ -308,8 +321,10 @@ auto checkBinarySection(const std::vector<config::PointConfig>& entries, const c
     -> std::expected<void, std::string>
 {
     for (std::size_t i = 0; i < entries.size(); ++i) {
-        const auto field = fmt::format("point_database.{}[{}].class", section, i);
-        if (auto r = checkEnum<opendnp3::PointClass>(entries[i].event_class, field); !r) return r;
+        const auto prefix = fmt::format("point_database.{}[{}]", section, i);
+        if (auto r = checkRange(entries[i], prefix); !r) return r;
+        if (auto r = checkEnum<opendnp3::PointClass>(entries[i].event_class, prefix + ".class"); !r)
+            return r;
     }
     return {};
 }
@@ -367,6 +382,8 @@ void OutstationManager::start() {
     // Keep the effective deadbands: updateAnalog() applies them itself (see
     // PointState) rather than delegating to EventMode::Detect.
     analog_deadband_.clear();
+    analog_state_.clear();
+    binary_state_.clear();
     for (const auto& [index, pt] : db_config.analog_input) {
         analog_deadband_[index] = pt.deadband;
     }
@@ -426,8 +443,13 @@ void OutstationManager::updateAnalog(std::uint16_t index, double value, bridge::
     const auto deadband_it = analog_deadband_.find(index);
     const auto deadband    = deadband_it != analog_deadband_.end() ? deadband_it->second : 0.0;
 
-    // Value alone decides; quality is carried but never triggers.
-    const bool is_event = !state.seen || std::fabs(value - state.last_evented) > deadband;
+    // Value alone decides; quality is carried but never triggers. A non-finite
+    // value fails every `>` comparison, so guard it explicitly -- otherwise a
+    // single NaN latches the point into Suppress for the life of the process.
+    const bool is_event = !state.seen
+                       || !std::isfinite(value)
+                       || !std::isfinite(state.last_evented)
+                       || std::fabs(value - state.last_evented) > deadband;
 
     spdlog::trace("Update analog[{}] = {} flags=0x{:02x}{}",
                   index, value, flag_bits, is_event ? " (event)" : "");
@@ -438,8 +460,7 @@ void OutstationManager::updateAnalog(std::uint16_t index, double value, bridge::
     outstation_->Apply(builder.Build());
 
     if (is_event) state.last_evented = value;
-    state.flags = flag_bits;
-    state.seen  = true;
+    state.seen = true;
 }
 
 void OutstationManager::updateBinary(std::uint16_t index, bool value, bridge::Quality quality) {
@@ -460,8 +481,7 @@ void OutstationManager::updateBinary(std::uint16_t index, bool value, bridge::Qu
     outstation_->Apply(builder.Build());
 
     if (is_event) state.last_evented = value;
-    state.flags = flag_bits;
-    state.seen  = true;
+    state.seen = true;
 }
 
 bool OutstationManager::isConnected() const {

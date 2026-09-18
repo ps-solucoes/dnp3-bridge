@@ -447,6 +447,19 @@ TEST_CASE("validatePointDatabase rejects unknown enum strings") {
             "point_database.analog_output_status[0].static_variation: unknown value \"Group30Var2\""));
     }
 
+    SUBCASE("a reversed range is rejected") {
+        auto r = load(R"({ "point_database": {
+            "analog_input": [ { "range": [20, 0], "class": "class2" } ] } })");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error() == "point_database.analog_input[0].range: start 20 is greater than end 0");
+    }
+
+    SUBCASE("a range ending at the last index is accepted, not hung on") {
+        auto r = load(R"({ "point_database": {
+            "binary_input": [ { "range": [65534, 65535], "class": "class1" } ] } })");
+        CHECK(r.has_value());
+    }
+
     SUBCASE("the reported index is the offending entry, not the first") {
         auto r = load(R"({ "point_database": {
             "analog_input": [ { "range": [0, 9], "class": "class2" },

@@ -49,9 +49,8 @@ private:
     /// difference, before it ever looks at the deadband.
     template <typename T>
     struct PointState {
-        T             last_evented{};
-        std::uint8_t  flags = 0;
-        bool          seen  = false;
+        T    last_evented{};
+        bool seen = false;
     };
 
     config::AppConfig                         cfg_;

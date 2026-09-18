@@ -27,6 +27,7 @@
 #include "dnp3bridge.grpc.pb.h"
 
 #include <atomic>
+#include <limits>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -780,6 +781,14 @@ TEST_CASE("Integration: quality reaches SCADA without generating events") {
         auto restart = runAnalogSequence(cfg, 3, {{100.0, Q::Good}, {100.0, Q::Restart}});
         CHECK(restart.events.empty());
         CHECK(restart.static_flags == kRestart);
+    }
+
+    SUBCASE("a non-finite value does not latch the point into suppression") {
+        // fabs(x - NaN) > deadband is false for every x, so without an explicit
+        // guard a NaN first sample would suppress this point forever.
+        const auto nan = std::numeric_limits<double>::quiet_NaN();
+        auto run = runAnalogSequence(cfg, 3, {{nan, Q::Good}, {100.0, Q::Good}, {102.0, Q::Good}});
+        CHECK(run.events == std::vector<double>{100.0, 102.0});
     }
 
     SUBCASE("uncertain is deliberately indistinguishable from good") {
