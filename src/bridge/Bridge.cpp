@@ -70,9 +70,9 @@ void Bridge::flushLoop() {
             std::visit([this](auto&& u) {
                 using T = std::decay_t<decltype(u)>;
                 if constexpr (std::is_same_v<T, AnalogUpdate>) {
-                    outstation_.updateAnalog(u.index, u.value);
+                    outstation_.updateAnalog(u.index, u.value, u.quality);
                 } else if constexpr (std::is_same_v<T, BinaryUpdate>) {
-                    outstation_.updateBinary(u.index, u.value);
+                    outstation_.updateBinary(u.index, u.value, u.quality);
                 }
             }, update);
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -10,7 +11,7 @@ struct PointConfig {
     std::uint16_t start = 0;
     std::uint16_t end   = 0;       // inclusive; start==end means single point
     std::string   event_class;     // "class0", "class1", "class2", "class3"
-    double        deadband = 0.0;  // only meaningful for analog types
+    std::optional<double> deadband;  // unset = leave as-is; only meaningful for analog types
     std::string   static_variation; // e.g. "Group30Var2"; empty = opendnp3 default
     std::string   event_variation;  // e.g. "Group32Var2"; empty = opendnp3 default
 };
