@@ -27,6 +27,7 @@
 #include "dnp3bridge.grpc.pb.h"
 
 #include <atomic>
+#include <limits>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -42,8 +43,8 @@ using namespace std::chrono_literals;
 // ---------------------------------------------------------------------------
 class CollectingSOEHandler : public opendnp3::ISOEHandler {
 public:
-    struct AnalogReading  { uint16_t index; double value; };
-    struct BinaryReading  { uint16_t index; bool value; };
+    struct AnalogReading  { uint16_t index; double value; uint8_t flags = 0; };
+    struct BinaryReading  { uint16_t index; bool value; uint8_t flags = 0; };
 
     static std::shared_ptr<CollectingSOEHandler> Create() {
         return std::make_shared<CollectingSOEHandler>();
@@ -65,13 +66,13 @@ public:
 
     void Process(const opendnp3::HeaderInfo&, const opendnp3::ICollection<opendnp3::Indexed<opendnp3::Analog>>& values) override {
         values.ForeachItem([this](const opendnp3::Indexed<opendnp3::Analog>& v) {
-            fragment_analogs_.push_back({v.index, v.value.value});
+            fragment_analogs_.push_back({v.index, v.value.value, v.value.flags.value});
         });
     }
 
     void Process(const opendnp3::HeaderInfo&, const opendnp3::ICollection<opendnp3::Indexed<opendnp3::Binary>>& values) override {
         values.ForeachItem([this](const opendnp3::Indexed<opendnp3::Binary>& v) {
-            fragment_binaries_.push_back({v.index, v.value.value});
+            fragment_binaries_.push_back({v.index, v.value.value, v.value.flags.value});
         });
     }
 
@@ -588,5 +589,211 @@ TEST_CASE("Integration: GetStatus reports connection state and timestamp") {
         auto status = fix.stub->GetStatus(&ctx, req, &resp);
         REQUIRE(status.ok());
         CHECK(resp.last_update_timestamp_ms() > 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Deadband — needs its own outstation because the shared fixture runs with an
+// empty point_database (opendnp3 defaults, deadband 0).
+// ---------------------------------------------------------------------------
+namespace {
+
+struct AnalogRun {
+    std::vector<double> events;       // events after the first update
+    double              static_value; // value from a closing Class 0 read
+    uint8_t             static_flags; // flags from that same read
+};
+
+using QualifiedValue = std::pair<double, dnp3bridge::bridge::Quality>;
+
+// Applies `sequence` to one analog point and reports the events the master sees
+// for it, excluding the first update (which always events off the RESTART flag),
+// plus what a Class 0 integrity read returns at the end.
+AnalogRun runAnalogSequence(std::vector<dnp3bridge::config::PointConfig> analog_cfg,
+                            uint16_t index,
+                            const std::vector<QualifiedValue>& sequence,
+                            uint16_t max_analog_events = 50)
+{
+    constexpr uint16_t kPort = 20002;
+
+    dnp3bridge::config::AppConfig cfg;
+    cfg.dnp3_channel_host   = "127.0.0.1";
+    cfg.dnp3_channel_port   = kPort;
+    cfg.dnp3_local_address  = 1024;
+    cfg.dnp3_remote_address = 1;
+    cfg.unsolicited.enabled = false;  // poll-driven, so event counts are deterministic
+    cfg.event_buffer.max_analog_events = max_analog_events;
+    cfg.point_database.analog_input = std::move(analog_cfg);
+
+    dnp3bridge::dnp3::CommandDispatcher dispatcher{500ms};
+    dnp3bridge::dnp3::OutstationManager outstation{cfg, dispatcher};
+    outstation.start();
+
+    opendnp3::DNP3Manager manager{1};
+    auto channel = manager.AddTCPClient(
+        "deadband-master", opendnp3::levels::NOTHING, opendnp3::ChannelRetry::Default(),
+        {opendnp3::IPEndpoint("127.0.0.1", kPort)}, "0.0.0.0", nullptr);
+
+    opendnp3::MasterStackConfig mcfg;
+    mcfg.master.disableUnsolOnStartup = true;
+    mcfg.master.startupIntegrityClassMask = opendnp3::ClassField::None();
+    mcfg.master.responseTimeout = opendnp3::TimeDuration::Seconds(5);
+    mcfg.link.LocalAddr  = 1;
+    mcfg.link.RemoteAddr = 1024;
+
+    auto soe = CollectingSOEHandler::Create();
+    auto master = channel->AddMaster("deadband-master", soe,
+                                     opendnp3::DefaultMasterApplication::Create(), mcfg);
+    master->Enable();
+    std::this_thread::sleep_for(1500ms);
+
+    const auto event_classes = opendnp3::ClassField(false, true, true, true);
+    auto drain = [&] {
+        soe->clear();
+        master->ScanClasses(event_classes, soe);
+        soe->waitForData();
+        std::this_thread::sleep_for(300ms);
+    };
+
+    outstation.updateAnalog(index, sequence.front().first, sequence.front().second);
+    std::this_thread::sleep_for(200ms);
+    drain();
+
+    for (std::size_t i = 1; i < sequence.size(); ++i) {
+        outstation.updateAnalog(index, sequence[i].first, sequence[i].second);
+        std::this_thread::sleep_for(100ms);
+    }
+    drain();
+
+    AnalogRun run{};
+    for (const auto& r : soe->getAnalogs()) {
+        if (r.index == index) run.events.push_back(r.value);
+    }
+
+    // Class 0 integrity read: statics carry the current value and quality.
+    soe->clear();
+    master->ScanClasses(opendnp3::ClassField(true, false, false, false), soe);
+    soe->waitForData();
+    std::this_thread::sleep_for(300ms);
+    for (const auto& r : soe->getAnalogs()) {
+        if (r.index == index) {
+            run.static_value = r.value;
+            run.static_flags = r.flags;
+        }
+    }
+
+    master->Disable();
+    master.reset();
+    channel.reset();
+    manager.Shutdown();
+    outstation.shutdown();
+    std::this_thread::sleep_for(300ms);
+
+    return run;
+}
+
+dnp3bridge::config::PointConfig analogRange(uint16_t start, uint16_t end,
+                                            std::string clazz,
+                                            std::optional<double> deadband)
+{
+    dnp3bridge::config::PointConfig pc;
+    pc.start = start;
+    pc.end   = end;
+    pc.event_class = std::move(clazz);
+    pc.deadband = deadband;
+    pc.static_variation = "Group30Var2";
+    pc.event_variation  = "Group32Var2";
+    return pc;
+}
+
+} // anonymous namespace
+
+TEST_CASE("Integration: analog deadband suppresses sub-threshold events") {
+    using Q = dnp3bridge::bridge::Quality;
+    const std::vector<QualifiedValue> sequence{
+        {100.0, Q::Good}, {100.5, Q::Good}, {100.9, Q::Good}, {102.0, Q::Good}};
+
+    SUBCASE("configured deadband is honoured") {
+        auto run = runAnalogSequence({analogRange(0, 20, "class2", 1.0)}, 3, sequence);
+        CHECK(run.events == std::vector<double>{102.0});
+    }
+
+    SUBCASE("a later entry that omits deadband does not clear it") {
+        auto run = runAnalogSequence(
+            {analogRange(0, 20, "class2", 1.0), analogRange(5, 5, "class2", std::nullopt)},
+            5, sequence);
+        CHECK(run.events == std::vector<double>{102.0});
+    }
+
+    // Losing the deadband does more than add noise: opendnp3 evicts the oldest
+    // event when the buffer fills, so in-band noise pushes the real transition
+    // out before the master ever polls for it.
+    SUBCASE("in-band noise does not evict the real transition") {
+        auto run = runAnalogSequence(
+            {analogRange(0, 20, "class2", 5.0), analogRange(7, 7, "class2", std::nullopt)},
+            7, {{100.0, Q::Good}, {120.0, Q::Good}, {121.0, Q::Good},
+                {122.0, Q::Good}, {123.0, Q::Good}}, /*max_analog_events=*/3);
+        CHECK(run.events == std::vector<double>{120.0});
+    }
+}
+
+TEST_CASE("Integration: quality reaches SCADA without generating events") {
+    using Q = dnp3bridge::bridge::Quality;
+    constexpr uint8_t kOnline  = 0x01;
+    constexpr uint8_t kOffline = 0x00;
+    constexpr uint8_t kRestart = 0x03;  // ONLINE|RESTART: valid value, predates restart
+
+    const auto cfg = std::vector{analogRange(0, 20, "class2", 1.0)};
+
+    SUBCASE("a quality-only change is visible in statics but emits no event") {
+        auto run = runAnalogSequence(cfg, 3, {{100.0, Q::Good}, {100.0, Q::Bad}});
+        CHECK(run.events.empty());               // REQ-11: no event, so no UR
+        CHECK(run.static_value == 100.0);
+        CHECK(run.static_flags == kOffline);     // but SCADA still sees it went bad
+    }
+
+    SUBCASE("quality does not short-circuit the deadband") {
+        // Without the explicit event decision, opendnp3's IsEvent() would fire on
+        // the flags difference and emit 100.5 despite the deadband of 1.0.
+        auto run = runAnalogSequence(cfg, 3, {{100.0, Q::Good}, {100.5, Q::Bad}});
+        CHECK(run.events.empty());
+        CHECK(run.static_flags == kOffline);
+    }
+
+    SUBCASE("a value change still events while quality is bad") {
+        auto run = runAnalogSequence(cfg, 3, {{100.0, Q::Good}, {100.5, Q::Bad}, {102.0, Q::Bad}});
+        CHECK(run.events == std::vector<double>{102.0});
+        CHECK(run.static_flags == kOffline);
+    }
+
+    SUBCASE("the deadband reference is the last evented value, not the last applied one") {
+        // 104 is suppressed, so 106 must still be measured against 100.
+        auto run = runAnalogSequence(cfg, 3,
+            {{100.0, Q::Good}, {104.0, Q::Bad}, {106.0, Q::Bad}},
+            /*max_analog_events=*/50);
+        CHECK(run.events == std::vector<double>{104.0, 106.0});
+    }
+
+    SUBCASE("good and restart map to the expected flags") {
+        auto good = runAnalogSequence(cfg, 3, {{100.0, Q::Good}, {100.0, Q::Good}});
+        CHECK(good.static_flags == kOnline);
+
+        auto restart = runAnalogSequence(cfg, 3, {{100.0, Q::Good}, {100.0, Q::Restart}});
+        CHECK(restart.events.empty());
+        CHECK(restart.static_flags == kRestart);
+    }
+
+    SUBCASE("a non-finite value does not latch the point into suppression") {
+        // fabs(x - NaN) > deadband is false for every x, so without an explicit
+        // guard a NaN first sample would suppress this point forever.
+        const auto nan = std::numeric_limits<double>::quiet_NaN();
+        auto run = runAnalogSequence(cfg, 3, {{nan, Q::Good}, {100.0, Q::Good}, {102.0, Q::Good}});
+        CHECK(run.events == std::vector<double>{100.0, 102.0});
+    }
+
+    SUBCASE("uncertain is deliberately indistinguishable from good") {
+        auto run = runAnalogSequence(cfg, 3, {{100.0, Q::Good}, {100.0, Q::Uncertain}});
+        CHECK(run.events.empty());
+        CHECK(run.static_flags == kOnline);
     }
 }

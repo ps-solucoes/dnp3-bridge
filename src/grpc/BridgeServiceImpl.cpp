@@ -31,6 +31,15 @@ opendnp3::CommandStatus toCommandStatus(dnp3bridge::v1::CommandResultStatus s) {
     }
 }
 
+bridge::Quality toQuality(dnp3bridge::v1::PointQuality q) {
+    switch (q) {
+        case dnp3bridge::v1::POINT_QUALITY_UNCERTAIN: return bridge::Quality::Uncertain;
+        case dnp3bridge::v1::POINT_QUALITY_BAD:       return bridge::Quality::Bad;
+        case dnp3bridge::v1::POINT_QUALITY_RESTART:   return bridge::Quality::Restart;
+        default:                                      return bridge::Quality::Good;
+    }
+}
+
 } // anonymous namespace
 
 BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
@@ -50,18 +59,22 @@ BridgeServiceImpl::BridgeServiceImpl(bridge::Bridge& bridge,
                   request->analogs_size(), request->binaries_size());
 
     for (const auto& a : request->analogs()) {
-        spdlog::trace("  Analog update: index={} value={}", a.index(), a.value());
+        spdlog::trace("  Analog update: index={} value={} quality={}",
+                      a.index(), a.value(), static_cast<int>(a.quality()));
         bridge_.applyUpdate(bridge::AnalogUpdate{
-            .index = static_cast<std::uint16_t>(a.index()),
-            .value = a.value(),
+            .index   = static_cast<std::uint16_t>(a.index()),
+            .value   = a.value(),
+            .quality = toQuality(a.quality()),
         });
     }
 
     for (const auto& b : request->binaries()) {
-        spdlog::trace("  Binary update: index={} value={}", b.index(), b.value());
+        spdlog::trace("  Binary update: index={} value={} quality={}",
+                      b.index(), b.value(), static_cast<int>(b.quality()));
         bridge_.applyUpdate(bridge::BinaryUpdate{
-            .index = static_cast<std::uint16_t>(b.index()),
-            .value = b.value(),
+            .index   = static_cast<std::uint16_t>(b.index()),
+            .value   = b.value(),
+            .quality = toQuality(b.quality()),
         });
     }
 

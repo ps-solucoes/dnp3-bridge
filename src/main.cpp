@@ -39,6 +39,11 @@ int main(int argc, char* argv[]) {
     }
     auto cfg = std::move(*cfg_result);
 
+    if (auto valid = dnp3bridge::dnp3::validatePointDatabase(cfg.point_database); !valid) {
+        fmt::print(stderr, "Failed to load configuration: {}\n", valid.error());
+        return 1;
+    }
+
     // Configure logging.
     auto log_level = spdlog::level::from_str(cfg.log_level);
 
@@ -57,6 +62,13 @@ int main(int argc, char* argv[]) {
     spdlog::set_default_logger(logger);
 
     spdlog::info("dnp3-bridge v{} starting", "0.1.0");
+    if (config_path) {
+        spdlog::info("Config file: {}", *config_path);
+    } else {
+        spdlog::warn("No config file argument -- using built-in defaults plus environment "
+                     "overrides; DNP3 point_database (classes, deadbands, variations) is JSON-only "
+                     "and cannot be set via environment");
+    }
     spdlog::info("gRPC address: {}", cfg.grpc_listen_address);
     spdlog::info("DNP3 endpoint: {}:{}", cfg.dnp3_channel_host, cfg.dnp3_channel_port);
     spdlog::info("DNP3 addresses: local={}, remote={}", cfg.dnp3_local_address, cfg.dnp3_remote_address);

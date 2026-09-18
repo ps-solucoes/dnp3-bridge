@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "config/ConfigLoader.hpp"
+#include "dnp3/OutstationManager.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -322,6 +323,23 @@ TEST_CASE("ConfigLoader") {
         CHECK(result->point_database.analog_input[0].static_variation == "Group30Var2");
     }
 
+    SUBCASE("point_database entry without deadband leaves it unset") {
+        TempJsonFile file{R"({
+            "point_database": {
+                "analog_input": [
+                    { "range": [0, 20], "class": "class2", "deadband": 1.0 },
+                    { "index": 5, "class": "class1" }
+                ]
+            }
+        })"};
+
+        auto result = ConfigLoader::load(file.path());
+        REQUIRE(result.has_value());
+        REQUIRE(result->point_database.analog_input.size() == 2);
+        CHECK(result->point_database.analog_input[0].deadband == 1.0);
+        CHECK_FALSE(result->point_database.analog_input[1].deadband.has_value());
+    }
+
     SUBCASE("point_database with single index syntax") {
         TempJsonFile file{R"({
             "point_database": {
@@ -363,5 +381,91 @@ TEST_CASE("ConfigLoader") {
         auto result = ConfigLoader::load(file.path());
         REQUIRE(result.has_value());
         CHECK(result->dnp3_channel_port == 40000);
+    }
+}
+
+TEST_CASE("validatePointDatabase rejects unknown enum strings") {
+    using dnp3bridge::dnp3::validatePointDatabase;
+
+    auto load = [](const char* json) {
+        TempJsonFile file{json};
+        auto cfg = ConfigLoader::load(file.path());
+        REQUIRE(cfg.has_value());
+        return validatePointDatabase(cfg->point_database);
+    };
+
+    SUBCASE("a fully valid point_database passes") {
+        auto r = load(R"({
+            "point_database": {
+                "binary_input":         [ { "range": [0, 10], "class": "class1" } ],
+                "binary_output_status": [ { "range": [0, 19], "class": "class0" } ],
+                "analog_input":         [ { "range": [0, 20], "class": "class2", "deadband": 1.0,
+                                            "static_variation": "Group30Var2",
+                                            "event_variation": "Group32Var2" } ],
+                "analog_output_status": [ { "range": [0, 4], "class": "class2",
+                                            "static_variation": "Group40Var2",
+                                            "event_variation": "Group42Var2" } ]
+            }
+        })");
+        CHECK(r.has_value());
+    }
+
+    SUBCASE("an empty point_database passes") {
+        auto r = load(R"({ "log_level": "info" })");
+        CHECK(r.has_value());
+    }
+
+    SUBCASE("wrong case in a class is rejected") {
+        auto r = load(R"({ "point_database": {
+            "binary_input": [ { "index": 0, "class": "Class1" } ] } })");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error() == "point_database.binary_input[0].class: unknown value \"Class1\" "
+                           "(expected one of: class0, class1, class2, class3)");
+    }
+
+    SUBCASE("wrong case in a static variation is rejected") {
+        auto r = load(R"({ "point_database": {
+            "analog_input": [ { "range": [0, 20], "static_variation": "Group30var2" } ] } })");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().starts_with(
+            "point_database.analog_input[0].static_variation: unknown value \"Group30var2\""));
+    }
+
+    SUBCASE("an out-of-range variation number is rejected") {
+        auto r = load(R"({ "point_database": {
+            "analog_input": [ { "range": [0, 20], "event_variation": "Group32Var9" } ] } })");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().starts_with(
+            "point_database.analog_input[0].event_variation: unknown value \"Group32Var9\""));
+    }
+
+    SUBCASE("an analog output status variation is checked against group 40/42") {
+        auto r = load(R"({ "point_database": {
+            "analog_output_status": [ { "range": [0, 4], "static_variation": "Group30Var2" } ] } })");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().starts_with(
+            "point_database.analog_output_status[0].static_variation: unknown value \"Group30Var2\""));
+    }
+
+    SUBCASE("a reversed range is rejected") {
+        auto r = load(R"({ "point_database": {
+            "analog_input": [ { "range": [20, 0], "class": "class2" } ] } })");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error() == "point_database.analog_input[0].range: start 20 is greater than end 0");
+    }
+
+    SUBCASE("a range ending at the last index is accepted, not hung on") {
+        auto r = load(R"({ "point_database": {
+            "binary_input": [ { "range": [65534, 65535], "class": "class1" } ] } })");
+        CHECK(r.has_value());
+    }
+
+    SUBCASE("the reported index is the offending entry, not the first") {
+        auto r = load(R"({ "point_database": {
+            "analog_input": [ { "range": [0, 9], "class": "class2" },
+                              { "index": 10, "class": "class2" },
+                              { "index": 11, "class": "classe2" } ] } })");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().starts_with("point_database.analog_input[2].class:"));
     }
 }

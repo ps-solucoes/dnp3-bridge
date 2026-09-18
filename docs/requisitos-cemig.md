@@ -168,7 +168,21 @@ Documento de requisitos consolidado a partir do Q&A entre equipe de desenvolvime
 **Fonte (stakeholder)**:
 > "A princípio não."
 
-**Implementação**: Comportamento padrão da opendnp3. Mudanças de quality flags sozinhas não geram eventos; apenas mudanças de valor geram eventos (respeitando deadband quando configurado).
+**Implementação**: NÃO é o comportamento padrão da opendnp3 — `measurements::IsEvent()`
+(`EventTriggers.cpp:28`) retorna `true` para qualquer diferença de flags, antes de avaliar a
+banda morta. Para binários (`MeasurementTypeSpecs.h:43`) a comparação é exclusivamente de flags.
+
+Por isso a decisão de gerar evento é tomada em `OutstationManager::updateAnalog()` /
+`updateBinary()`, e não delegada ao `EventMode::Detect`:
+
+- somente o **valor** decide (analógico: variação > banda morta; binário: mudança de estado);
+- o update é aplicado com `EventMode::Force` quando há evento e `EventMode::Suppress` quando não há;
+- `Suppress` atualiza o valor estático e as flags sem gerar evento, portanto a qualidade chega
+  ao SCADA nas leituras de Classe 0 sem gerar UR.
+
+A referência da banda morta é o último valor **com evento**, não o último valor aplicado.
+
+**Arquivos**: `src/dnp3/OutstationManager.cpp`, `src/bridge/DataModel.hpp`
 
 ---
 
@@ -211,3 +225,33 @@ O stakeholder não respondeu especificamente sobre confirmação de enlace. A op
 | `src/dnp3/ForwardingCommandHandler.hpp` | REQ-06 |
 | `src/dnp3/ForwardingCommandHandler.cpp` | REQ-06 |
 | `config.example.json` | REQ-01, 02, 03, 06, 07, 08, 12 |
+
+---
+
+## REQ-13 — Qualidade dos pontos reportada ao SCADA
+
+**Status**: IMPLEMENTADO
+
+**Descrição**: A qualidade informada pelo lado Python deve ser refletida nas flags DNP3 dos pontos,
+visível nas leituras estáticas (Classe 0), sem gerar URs (ver REQ-11).
+
+**Fonte (stakeholder)**: Confirmado após a constatação de que o campo `quality` do gRPC era descartado.
+
+**Implementação**: `PointQuality` (gRPC) → `bridge::Quality` → flags DNP3 em `toFlagBits()`:
+
+| `PointQuality` | Flags DNP3 |
+|---|---|
+| `GOOD` | `ONLINE` (0x01) |
+| `UNCERTAIN` | `ONLINE` (0x01) |
+| `BAD` | `0x00` (ONLINE removido = offline) |
+| `RESTART` | `ONLINE \| RESTART` (0x03) |
+
+**Nota**: `RESTART` mantém o bit `ONLINE` ligado. O Python envia um valor junto com a flag,
+portanto o valor é válido e apenas antecede o restart; `RESTART` isolado (0x02) é o marcador da
+opendnp3 para um ponto que nunca recebeu valor algum.
+
+**Nota**: `UNCERTAIN` é mapeado para `ONLINE`, ficando indistinguível de `GOOD` no protocolo. O DNP3
+não possui equivalente direto; as alternativas eram `LOCAL_FORCED` e `REFERENCE_ERR`. Decisão da
+CEMIG. Reavaliar com o stakeholder caso dados incertos precisem ser visíveis no SCADA.
+
+**Arquivos**: `src/bridge/DataModel.hpp`, `src/grpc/BridgeServiceImpl.cpp`, `src/dnp3/OutstationManager.cpp`

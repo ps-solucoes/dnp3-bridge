@@ -54,9 +54,9 @@ SCADA → Python (commands):
 ### Component Layers
 
 - **`src/grpc/`** — gRPC server. `BridgeServiceImpl` implements `BridgeService` (sync API). `GrpcServer` owns the `grpc::Server` lifecycle. Uses `::grpc::` namespace prefix to avoid collision with `dnp3bridge::grpc`.
-- **`src/bridge/`** — Decoupling layer. `Bridge` accepts `PointUpdate` variants via a thread-safe queue and flushes to `OutstationManager` on a background `std::jthread`. `DataModel.hpp` defines the variant types.
+- **`src/bridge/`** — Decoupling layer. `Bridge` accepts `PointUpdate` variants via a thread-safe queue and flushes to `OutstationManager` on a background `std::jthread`. `DataModel.hpp` defines the variant types and the `Quality` enum shared by the gRPC and DNP3 layers.
 - **`src/dnp3/`** — DNP3 outstation using opendnp3 3.1.2:
-  - `OutstationManager` — owns DNP3Manager, TCP server channel, and outstation
+  - `OutstationManager` — owns DNP3Manager, TCP server channel, and outstation. Decides event generation itself (`EventMode::Force`/`Suppress`) rather than using `EventMode::Detect`: opendnp3's `IsEvent()` treats *any* flags difference as an event before consulting the deadband, so quality changes would otherwise both emit URs (violating REQ-11) and bypass the deadband (REQ-08). Only the value decides; the deadband reference is the last **evented** value.
   - `ForwardingCommandHandler` — implements `ICommandHandler`, forwards SCADA commands (CROB, analog outputs) to Python via `CommandDispatcher`
   - `CommandDispatcher` — coordination hub for the reverse command path. Uses `std::promise`/`std::future` pairs keyed by command ID with configurable timeout. Manages a `ServerWriter` for the streaming RPC.
 - **`src/config/`** — `AppConfig` struct with defaults; `ConfigLoader` reads from JSON file then overlays environment variables.
@@ -96,7 +96,9 @@ Four thread domains: gRPC sync server thread pool, Bridge flush `jthread`, opend
 
 Uses spdlog. All source files use `spdlog::info/debug/warn/error/trace()` — no `std::cerr` in `src/`.
 
-Log levels used: `critical` (server bind failure), `error` (exceptions), `warn` (timeouts, missing stream), `info` (lifecycle events), `debug` (RPC calls, command dispatch), `trace` (individual point values, flush batches).
+Log levels used: `critical` (server bind failure), `error` (exceptions), `warn` (timeouts, missing stream, missing/partial configuration), `info` (lifecycle events, effective DNP3 point database), `debug` (RPC calls, command dispatch), `trace` (individual point values, flush batches).
+
+At startup the outstation logs the effective per-point database (class, deadband, variations) at `info`, coalescing consecutive identical points into ranges. This is the authoritative view of what opendnp3 received — check it first when point behaviour looks wrong.
 
 When `log_file` is configured, logs go to both stderr (with color) and a rotating file.
 
@@ -131,10 +133,12 @@ These sections are configured in the JSON config file only. See `config.example.
 
 **`point_database`** — Per-point DNP3 database configuration. Entries support `"index": N` (single point) or `"range": [start, end]` (inclusive range). Each entry can set:
 - `class` — event class (`"class0"`, `"class1"`, `"class2"`, `"class3"`)
-- `deadband` — analog deadband threshold (double, default: `0.0`)
+- `deadband` — analog deadband threshold (double). When omitted, the point keeps whatever an earlier matching entry set (opendnp3 default is `0.0`)
 - `static_variation` / `event_variation` — DNP3 object variations (e.g., `"Group30Var2"`)
 
 When `point_database` is absent, hardcoded defaults are used (11 BI, 20 BO, 21 AI, 5 AO).
+
+`class`, `static_variation` and `event_variation` are validated at startup by `dnp3::validatePointDatabase()`; an unrecognized value (including wrong case) fails startup with the offending key and the accepted names. Values are case-sensitive: `class2`, not `Class2`; `Group30Var2`, not `Group30var2`.
 
 ## Simulators
 
