@@ -741,7 +741,7 @@ TEST_CASE("Integration: quality reaches SCADA without generating events") {
     using Q = dnp3bridge::bridge::Quality;
     constexpr uint8_t kOnline  = 0x01;
     constexpr uint8_t kOffline = 0x00;
-    constexpr uint8_t kRestart = 0x02;
+    constexpr uint8_t kRestart = 0x03;  // ONLINE|RESTART: valid value, predates restart
 
     const auto cfg = std::vector{analogRange(0, 20, "class2", 1.0)};
 

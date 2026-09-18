@@ -244,7 +244,11 @@ visível nas leituras estáticas (Classe 0), sem gerar URs (ver REQ-11).
 | `GOOD` | `ONLINE` (0x01) |
 | `UNCERTAIN` | `ONLINE` (0x01) |
 | `BAD` | `0x00` (ONLINE removido = offline) |
-| `RESTART` | `RESTART` (0x02) |
+| `RESTART` | `ONLINE \| RESTART` (0x03) |
+
+**Nota**: `RESTART` mantém o bit `ONLINE` ligado. O Python envia um valor junto com a flag,
+portanto o valor é válido e apenas antecede o restart; `RESTART` isolado (0x02) é o marcador da
+opendnp3 para um ponto que nunca recebeu valor algum.
 
 **Nota**: `UNCERTAIN` é mapeado para `ONLINE`, ficando indistinguível de `GOOD` no protocolo. O DNP3
 não possui equivalente direto; as alternativas eram `LOCAL_FORCED` e `REFERENCE_ERR`. Decisão da

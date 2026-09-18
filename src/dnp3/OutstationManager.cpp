@@ -260,7 +260,12 @@ std::uint8_t toFlagBits(bridge::Quality q) {
         case bridge::Quality::Good:      return static_cast<std::uint8_t>(opendnp3::AnalogQuality::ONLINE);
         case bridge::Quality::Uncertain: return static_cast<std::uint8_t>(opendnp3::AnalogQuality::ONLINE);
         case bridge::Quality::Bad:       return 0;  // ONLINE cleared == offline in DNP3
-        case bridge::Quality::Restart:   return static_cast<std::uint8_t>(opendnp3::AnalogQuality::RESTART);
+        // ONLINE stays set: Python sends a value alongside RESTART, so the value
+        // is valid and merely predates the restart. Bare RESTART is opendnp3's
+        // marker for a point that has never been assigned a value at all.
+        case bridge::Quality::Restart:
+            return static_cast<std::uint8_t>(opendnp3::AnalogQuality::ONLINE)
+                 | static_cast<std::uint8_t>(opendnp3::AnalogQuality::RESTART);
     }
     return static_cast<std::uint8_t>(opendnp3::AnalogQuality::ONLINE);
 }
