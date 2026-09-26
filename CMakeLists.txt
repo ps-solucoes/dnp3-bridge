@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(GNUInstallDirs)
+
 # ---------------------------------------------------------------------------
 # Dependencies — system packages
 # ---------------------------------------------------------------------------
@@ -210,3 +212,45 @@ target_link_libraries(dnp3-master-sim PRIVATE
     ftxui::dom
     ftxui::component
 )
+
+# ---------------------------------------------------------------------------
+# Install / packaging
+# ---------------------------------------------------------------------------
+install(TARGETS dnp3-bridge RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT bridge)
+install(TARGETS dnp3-master-sim RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT tools)
+install(FILES packaging/dnp3-bridge.service DESTINATION lib/systemd/system COMPONENT bridge)
+install(FILES config.example.json RENAME config.json DESTINATION /etc/dnp3-bridge COMPONENT bridge)
+
+set(CPACK_PACKAGE_NAME dnp3-bridge)
+set(CPACK_PACKAGE_VENDOR "PS Soluções")
+set(CPACK_PACKAGE_CONTACT "dnp3-bridge maintainers")
+set(CPACK_GENERATOR DEB)
+set(CPACK_STRIP_FILES ON)
+set(CPACK_DEB_COMPONENT_INSTALL ON)
+# Keeps the FetchContent dependencies' own install rules out of the packages.
+set(CPACK_COMPONENTS_ALL bridge tools)
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_BRIDGE_PACKAGE_NAME dnp3-bridge)
+set(CPACK_DEBIAN_BRIDGE_PACKAGE_SECTION net)
+set(CPACK_DEBIAN_BRIDGE_DESCRIPTION "gRPC to DNP3 outstation bridge
+Translates point updates and commands between a local gRPC client and a
+SCADA master speaking DNP3 over TCP.")
+set(CPACK_DEBIAN_BRIDGE_PACKAGE_CONTROL_EXTRA
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/conffiles
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm)
+set(CPACK_DEBIAN_BRIDGE_PACKAGE_CONTROL_STRICT_PERMISSION ON)
+set(CPACK_DEBIAN_TOOLS_PACKAGE_NAME dnp3-bridge-tools)
+set(CPACK_DEBIAN_TOOLS_PACKAGE_SECTION utils)
+set(CPACK_DEBIAN_TOOLS_DESCRIPTION "DNP3 master simulator for dnp3-bridge
+Interactive DNP3 master (dnp3-master-sim) for testing dnp3-bridge without
+a real SCADA system.")
+foreach(comp IN LISTS CPACK_COMPONENTS_ALL)
+    string(TOUPPER ${comp} COMP)
+    install(FILES packaging/debian-copyright RENAME copyright
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/${CPACK_DEBIAN_${COMP}_PACKAGE_NAME}
+        COMPONENT ${comp})
+endforeach()
+include(CPack)

@@ -20,7 +20,10 @@
             "displayName": "Release",
             "binaryDir": "${sourceDir}/build/release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "/usr",
+                "DNP3_STATIC_LIBS": "ON",
+                "CMAKE_POSITION_INDEPENDENT_CODE": "ON"
             }
         }
     ],
@@ -32,6 +35,78 @@
         {
             "name": "release",
             "configurePreset": "release"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error",
+                "stopOnFailure": false
+            }
+        },
+        {
+            "name": "dev",
+            "inherits": "base",
+            "configurePreset": "dev"
+        },
+        {
+            "name": "release",
+            "inherits": "base",
+            "configurePreset": "release"
+        }
+    ],
+    "packagePresets": [
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "generators": [
+                "DEB"
+            ]
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "dev",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "dev"
+                },
+                {
+                    "type": "build",
+                    "name": "dev"
+                },
+                {
+                    "type": "test",
+                    "name": "dev"
+                }
+            ]
+        },
+        {
+            "name": "release",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release"
+                },
+                {
+                    "type": "test",
+                    "name": "release"
+                },
+                {
+                    "type": "package",
+                    "name": "release"
+                }
+            ]
         }
     ]
 }
