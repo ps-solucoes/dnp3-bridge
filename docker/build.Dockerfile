@@ -3,7 +3,7 @@
 # trixie guarantees the packages match the board's glibc and gRPC.
 #
 #   docker build -t dnp3-bridge-build -f docker/build.Dockerfile docker
-#   docker/run.sh cmake --workflow --preset dev
+#   docker/run.sh cmake --workflow --preset release    # or armhf-release
 
 FROM debian:trixie
 
