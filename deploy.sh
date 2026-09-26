@@ -2,29 +2,26 @@
 # Create a deployment package for the BeagleBone (armhf).
 #
 # Usage:
-#   ./deploy.sh          # Package armhf binaries (must run build-armhf.sh first)
-#   ./deploy.sh --native # Package native (x86) release binaries instead
+#   ./deploy.sh          # Bundle armhf binaries from build/armhf-release/
+#   ./deploy.sh --native # Bundle native (amd64) binaries from build/release/
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_DIR="$SCRIPT_DIR/deploy"
 
 if [[ "${1:-}" == "--native" ]]; then
-    echo "=== Building native C++ release binaries ==="
-    cmake --preset release -Wno-dev
-    cmake --build --preset release -j"$(nproc)"
-    BIN_DIR="$SCRIPT_DIR/build/release"
-    SHIP_DNP3_LIB=false
+    PRESET=release
 else
-    BIN_DIR="$SCRIPT_DIR/build/armhf"
-    SHIP_DNP3_LIB=true
-    if [[ ! -f "$BIN_DIR/dnp3-bridge" ]]; then
-        echo "ERROR: armhf binaries not found at $BIN_DIR/"
-        echo "Run ./build-armhf.sh first, or use ./deploy.sh --native for a native build."
-        exit 1
-    fi
-    echo "=== Using armhf binaries from $BIN_DIR ==="
+    PRESET=armhf-release
 fi
+BIN_DIR="$SCRIPT_DIR/build/$PRESET"
+
+if [[ ! -f "$BIN_DIR/dnp3-bridge" ]]; then
+    echo "ERROR: binaries not found at $BIN_DIR/"
+    echo "Build them first: sg docker -c 'docker/run.sh cmake --workflow --preset $PRESET'"
+    exit 1
+fi
+echo "=== Using binaries from $BIN_DIR ==="
 
 echo "=== Preparing deploy folder ==="
 rm -rf "$DEPLOY_DIR"
@@ -34,11 +31,6 @@ mkdir -p "$DEPLOY_DIR/python-dsp-sim"
 # C++ binaries
 cp "$BIN_DIR/dnp3-bridge" "$DEPLOY_DIR/bin/"
 cp "$BIN_DIR/dnp3-master-sim" "$DEPLOY_DIR/bin/"
-
-# Shared library (armhf builds link opendnp3 dynamically)
-if [[ "$SHIP_DNP3_LIB" == true ]]; then
-    cp "$BIN_DIR/libopendnp3.so" "$DEPLOY_DIR/bin/"
-fi
 
 # Config example
 cp "$SCRIPT_DIR/config.example.json" "$DEPLOY_DIR/"

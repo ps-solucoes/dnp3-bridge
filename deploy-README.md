@@ -6,8 +6,7 @@
 deploy/
 ├── bin/
 │   ├── dnp3-bridge          # Bridge service (gRPC <-> DNP3)
-│   ├── dnp3-master-sim      # DNP3 master simulator (TUI)
-│   └── libopendnp3.so       # opendnp3 shared library
+│   └── dnp3-master-sim      # DNP3 master simulator (TUI)
 ├── python-dsp-sim/          # Python DSP simulator (TUI)
 │   ├── tui.py
 │   ├── setup.sh             # One-time Python setup
@@ -19,10 +18,19 @@ deploy/
 
 Tested on **Debian 13 (Trixie)** — `am335x-debian-13.4-base-v6.12-armhf-2026-03-17`.
 
+The normal install is the package from `build/armhf-release/`:
+
+```bash
+sudo apt install ./dnp3-bridge_<ver>_armhf.deb
+```
+
+It installs the systemd service (enabled and started) with its config at `/etc/dnp3-bridge/config.json`.
+The raw `bin/` copy below is for manual testing; while the service runs, a manual `~/dnp3-bridge` fails to bind.
+
 ### 1. Copy files to the BeagleBone
 
 ```bash
-scp bin/dnp3-bridge bin/dnp3-master-sim bin/libopendnp3.so debian@192.168.7.2:~/
+scp bin/dnp3-bridge bin/dnp3-master-sim debian@192.168.7.2:~/
 ```
 
 ### 2. SSH in and install dependencies
@@ -30,8 +38,6 @@ scp bin/dnp3-bridge bin/dnp3-master-sim bin/libopendnp3.so debian@192.168.7.2:~/
 ```bash
 ssh debian@192.168.7.2   # password: temppwd
 
-sudo cp ~/libopendnp3.so /usr/local/lib/
-sudo ldconfig
 sudo apt update && sudo apt install -y libgrpc++-dev libprotobuf-dev
 chmod +x ~/dnp3-bridge ~/dnp3-master-sim
 ```
@@ -94,9 +100,6 @@ DNP3_BRIDGE_LOG_LEVEL=info    # trace | debug | info | warn | error
 ```
 
 ## Troubleshooting
-
-**`error while loading shared libraries: libopendnp3.so`**
-Run `sudo ldconfig` again, or check `sudo ldconfig -p | grep opendnp3`.
 
 **Bridge exits immediately with "bind failed"**
 Port 50051 or 20000 is already in use. Check with `ss -tlnp | grep -E '50051|20000'`.
