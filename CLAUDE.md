@@ -22,6 +22,8 @@ docker/run.sh cmake --workflow --preset armhf-release   # same for the BeagleBon
 
 This leaves `dnp3-bridge_<ver>_amd64.deb` (`/usr/bin/dnp3-bridge`) and `dnp3-bridge-tools_<ver>_amd64.deb` (`/usr/bin/dnp3-master-sim`) in `build/release/`. opendnp3 is linked statically; only the `bridge` and `tools` CPack components are packaged, so FetchContent dependencies' install rules never reach a .deb.
 
+Releasing: bump `project(VERSION)` in `CMakeLists.txt`, add its `## [<ver>]` section to `CHANGELOG.md`, and push the tag `v<ver>`; the Release workflow publishes the four .debs.
+
 System dependencies (apt): `libgrpc++-dev`, `libprotobuf-dev`, `protobuf-compiler-grpc`
 
 After modifying `proto/dnp3bridge.proto`, a rebuild will regenerate the C++ sources automatically.
