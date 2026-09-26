@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = configure ] || [ "$1" = abort-upgrade ] || [ "$1" = abort-deconfigure ] || [ "$1" = abort-remove ]; then
+    deb-systemd-helper unmask dnp3-bridge.service >/dev/null || true
+    # was-enabled defaults to true, so new installations run enable.
+    if deb-systemd-helper --quiet was-enabled dnp3-bridge.service; then
+        deb-systemd-helper enable dnp3-bridge.service >/dev/null || true
+    else
+        deb-systemd-helper update-state dnp3-bridge.service >/dev/null || true
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        if [ -n "$2" ]; then
+            action=restart
+        else
+            action=start
+        fi
+        deb-systemd-invoke "$action" dnp3-bridge.service >/dev/null || true
+    fi
+fi

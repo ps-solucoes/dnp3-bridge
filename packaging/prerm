@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+
+# Upgrades restart the service from postinst instead of stopping it here.
+if [ -z "${DPKG_ROOT:-}" ] && [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    deb-systemd-invoke stop dnp3-bridge.service >/dev/null || true
+fi

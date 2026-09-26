@@ -1,0 +1,16 @@
+[Unit]
+Description=DNP3 bridge (gRPC to DNP3 outstation)
+Documentation=https://github.com/ps-solucoes/dnp3-bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/dnp3-bridge /etc/dnp3-bridge/config.json
+Restart=on-failure
+RestartSec=2
+DynamicUser=yes
+# Writable home for "log_file", e.g. /var/log/dnp3-bridge/dnp3-bridge.log
+LogsDirectory=dnp3-bridge
+
+[Install]
+WantedBy=multi-user.target

@@ -16,12 +16,27 @@
             }
         },
         {
+            "name": "release-base",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "/usr",
+                "DNP3_STATIC_LIBS": "ON",
+                "CMAKE_POSITION_INDEPENDENT_CODE": "ON"
+            }
+        },
+        {
             "name": "release",
             "displayName": "Release",
             "binaryDir": "${sourceDir}/build/release",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            }
+            "inherits": "release-base"
+        },
+        {
+            "name": "armhf-release",
+            "displayName": "BeagleBone Black release (armhf cross, tests under qemu)",
+            "inherits": "release-base",
+            "binaryDir": "${sourceDir}/build/armhf-release",
+            "toolchainFile": "${sourceDir}/cmake/arm-linux-gnueabihf.cmake"
         }
     ],
     "buildPresets": [
@@ -32,6 +47,115 @@
         {
             "name": "release",
             "configurePreset": "release"
+        },
+        {
+            "name": "armhf-release",
+            "configurePreset": "armhf-release"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error",
+                "stopOnFailure": false
+            }
+        },
+        {
+            "name": "dev",
+            "inherits": "base",
+            "configurePreset": "dev"
+        },
+        {
+            "name": "release",
+            "inherits": "base",
+            "configurePreset": "release"
+        },
+        {
+            "name": "armhf-release",
+            "inherits": "base",
+            "configurePreset": "armhf-release"
+        }
+    ],
+    "packagePresets": [
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "generators": [
+                "DEB"
+            ]
+        },
+        {
+            "name": "armhf-release",
+            "configurePreset": "armhf-release",
+            "generators": [
+                "DEB"
+            ]
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "dev",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "dev"
+                },
+                {
+                    "type": "build",
+                    "name": "dev"
+                },
+                {
+                    "type": "test",
+                    "name": "dev"
+                }
+            ]
+        },
+        {
+            "name": "release",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release"
+                },
+                {
+                    "type": "test",
+                    "name": "release"
+                },
+                {
+                    "type": "package",
+                    "name": "release"
+                }
+            ]
+        },
+        {
+            "name": "armhf-release",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "armhf-release"
+                },
+                {
+                    "type": "build",
+                    "name": "armhf-release"
+                },
+                {
+                    "type": "test",
+                    "name": "armhf-release"
+                },
+                {
+                    "type": "package",
+                    "name": "armhf-release"
+                }
+            ]
         }
     ]
 }

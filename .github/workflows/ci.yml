@@ -6,26 +6,42 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
+    name: ${{ matrix.preset }}
     runs-on: ubuntu-24.04
-
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [release, armhf-release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgrpc++-dev \
-            libprotobuf-dev \
-            protobuf-compiler-grpc
+      - uses: docker/setup-buildx-action@v4
 
-      - name: Configure
-        run: cmake --preset dev -Wno-dev
+      - name: Build container
+        uses: docker/build-push-action@v7
+        with:
+          context: docker
+          file: docker/build.Dockerfile
+          tags: dnp3-bridge-build
+          load: true
+          cache-from: type=gha,scope=dnp3-bridge-build
+          cache-to: type=gha,mode=max,scope=dnp3-bridge-build
 
-      - name: Build
-        run: cmake --build --preset dev -- -j$(nproc)
+      - name: Configure, build, test, package
+        run: docker/run.sh cmake --workflow --preset ${{ matrix.preset }}
 
-      - name: Test
-        run: ctest --test-dir build/debug --output-on-failure
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: deb-${{ matrix.preset }}
+          path: build/${{ matrix.preset }}/*.deb
+          if-no-files-found: error

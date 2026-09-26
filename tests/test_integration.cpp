@@ -11,8 +11,10 @@
 #include <opendnp3/channel/ChannelRetry.h>
 #include <opendnp3/channel/IPEndpoint.h>
 #include <opendnp3/logging/LogLevels.h>
-#include <opendnp3/master/DefaultMasterApplication.h>
+#include <opendnp3/master/IMasterApplication.h>
 #include <opendnp3/master/ISOEHandler.h>
+#include <opendnp3/master/ITaskCallback.h>
+#include <opendnp3/master/TaskConfig.h>
 #include <opendnp3/master/MasterStackConfig.h>
 #include <opendnp3/master/CommandSet.h>
 #include <opendnp3/app/ControlRelayOutputBlock.h>
@@ -22,6 +24,7 @@
 #include <opendnp3/gen/TaskCompletion.h>
 #include <opendnp3/gen/CommandStatus.h>
 #include <opendnp3/gen/CommandPointState.h>
+#include <opendnp3/gen/MasterTaskType.h>
 
 #include <grpcpp/grpcpp.h>
 #include "dnp3bridge.grpc.pb.h"
@@ -33,6 +36,7 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -60,8 +64,6 @@ public:
         std::lock_guard lock{mutex_};
         analogs_.insert(analogs_.end(), fragment_analogs_.begin(), fragment_analogs_.end());
         binaries_.insert(binaries_.end(), fragment_binaries_.begin(), fragment_binaries_.end());
-        received_ = true;
-        cv_.notify_all();
     }
 
     void Process(const opendnp3::HeaderInfo&, const opendnp3::ICollection<opendnp3::Indexed<opendnp3::Analog>>& values) override {
@@ -88,17 +90,10 @@ public:
     void Process(const opendnp3::HeaderInfo&, const opendnp3::ICollection<opendnp3::Indexed<opendnp3::AnalogCommandEvent>>&) override {}
     void Process(const opendnp3::HeaderInfo&, const opendnp3::ICollection<opendnp3::DNPTime>&) override {}
 
-    // Wait for at least one poll response.
-    bool waitForData(std::chrono::milliseconds timeout = 5000ms) {
-        std::unique_lock lock{mutex_};
-        return cv_.wait_for(lock, timeout, [this] { return received_; });
-    }
-
     void clear() {
         std::lock_guard lock{mutex_};
         analogs_.clear();
         binaries_.clear();
-        received_ = false;
     }
 
     std::vector<AnalogReading> getAnalogs() {
@@ -113,13 +108,91 @@ public:
 
 private:
     std::mutex mutex_;
-    std::condition_variable cv_;
-    bool received_{false};
     std::vector<AnalogReading> analogs_;
     std::vector<BinaryReading> binaries_;
     std::vector<AnalogReading> fragment_analogs_;
     std::vector<BinaryReading> fragment_binaries_;
 };
+
+// ---------------------------------------------------------------------------
+// Master readiness — a startup integrity poll can time out and be retried, so
+// no fixed sleep covers the master's startup sequence.
+// ---------------------------------------------------------------------------
+class ReadinessMasterApplication final : public opendnp3::IMasterApplication {
+public:
+    explicit ReadinessMasterApplication(std::vector<opendnp3::MasterTaskType> required)
+        : pending_{std::move(required)} {}
+
+    opendnp3::UTCTimestamp Now() override {
+        const auto now = std::chrono::system_clock::now().time_since_epoch();
+        return {static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count())};
+    }
+
+    void OnOpen() override {
+        std::lock_guard lock{mutex_};
+        open_ = true;
+        cv_.notify_all();
+    }
+
+    void OnTaskComplete(const opendnp3::TaskInfo& info) override {
+        if (info.result != opendnp3::TaskCompletion::SUCCESS) return;
+        std::lock_guard lock{mutex_};
+        std::erase(pending_, info.type);
+        cv_.notify_all();
+    }
+
+    // Returns what was not reached, empty when ready.
+    std::string waitReady(std::chrono::milliseconds timeout) {
+        std::unique_lock lock{mutex_};
+        cv_.wait_for(lock, timeout, [this] { return open_ && pending_.empty(); });
+        std::string missing = open_ ? "" : " application layer open";
+        for (auto type : pending_) {
+            missing += std::string{" "} + opendnp3::MasterTaskTypeSpec::to_string(type) + " SUCCESS";
+        }
+        return missing;
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool open_{false};
+    std::vector<opendnp3::MasterTaskType> pending_;
+};
+
+// Completes on the scan's own response; the SOE handler cannot tell a scan
+// response from an unsolicited one.
+class TaskWaiter final : public opendnp3::ITaskCallback {
+public:
+    void OnStart() override {}
+    void OnDestroyed() override {}
+
+    void OnComplete(opendnp3::TaskCompletion result) override {
+        std::lock_guard lock{mutex_};
+        result_ = result;
+        cv_.notify_all();
+    }
+
+    bool waitSuccess(std::chrono::milliseconds timeout) {
+        std::unique_lock lock{mutex_};
+        cv_.wait_for(lock, timeout, [this] { return result_.has_value(); });
+        return result_ == opendnp3::TaskCompletion::SUCCESS;
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::optional<opendnp3::TaskCompletion> result_;
+};
+
+bool scanClasses(opendnp3::IMaster& master, opendnp3::ClassField classes,
+                 const std::shared_ptr<CollectingSOEHandler>& soe,
+                 std::chrono::milliseconds timeout = 10s)
+{
+    soe->clear();
+    auto task = std::make_shared<TaskWaiter>();
+    master.ScanClasses(classes, soe, opendnp3::TaskConfig::With(task));
+    return task->waitSuccess(timeout);
+}
 
 // ---------------------------------------------------------------------------
 // Integration test fixture — wires up all components
@@ -143,6 +216,7 @@ struct IntegrationFixture {
     std::shared_ptr<opendnp3::IChannel> master_channel;
     std::shared_ptr<opendnp3::IMaster> master;
     std::shared_ptr<CollectingSOEHandler> soe;
+    std::shared_ptr<ReadinessMasterApplication> master_app;
 
     // gRPC client (simulates Python).
     std::shared_ptr<::grpc::Channel> grpc_channel;
@@ -157,12 +231,25 @@ struct IntegrationFixture {
         , grpc_server(cfg.grpc_listen_address, service)
         , master_manager(1)
         , soe(CollectingSOEHandler::Create())
+        , master_app(std::make_shared<ReadinessMasterApplication>(std::vector{
+              opendnp3::MasterTaskType::STARTUP_INTEGRITY_POLL,
+              opendnp3::MasterTaskType::ENABLE_UNSOLICITED}))
     {
         // Start bridge components.
         outstation.start();
         bridge.start();
         grpc_thread = std::jthread([this] { grpc_server.start(); });
-        std::this_thread::sleep_for(500ms);
+
+        // Start gRPC client.
+        grpc_channel = ::grpc::CreateChannel(
+            "127.0.0.1:" + std::to_string(kGrpcPort),
+            ::grpc::InsecureChannelCredentials()
+        );
+        stub = dnp3bridge::v1::BridgeService::NewStub(grpc_channel);
+        if (!grpc_channel->WaitForConnected(std::chrono::system_clock::now() + 10s)) {
+            teardown();
+            FAIL("gRPC channel to 127.0.0.1:" << kGrpcPort << " not connected within 10s");
+        }
 
         // Start DNP3 master.
         master_channel = master_manager.AddTCPClient(
@@ -184,24 +271,23 @@ struct IntegrationFixture {
         master = master_channel->AddMaster(
             "test-master",
             soe,
-            opendnp3::DefaultMasterApplication::Create(),
+            master_app,
             master_cfg
         );
         master->Enable();
 
-        // Start gRPC client.
-        grpc_channel = ::grpc::CreateChannel(
-            "127.0.0.1:" + std::to_string(kGrpcPort),
-            ::grpc::InsecureChannelCredentials()
-        );
-        stub = dnp3bridge::v1::BridgeService::NewStub(grpc_channel);
-
-        // Wait for DNP3 link to come up (startup integrity poll).
-        std::this_thread::sleep_for(2s);
+        // 15s covers one 5s response timeout on the startup poll plus its retry.
+        if (auto missing = master_app->waitReady(15s); !missing.empty()) {
+            teardown();
+            FAIL("DNP3 master not ready within 15s, missing:" << missing);
+        }
     }
 
-    ~IntegrationFixture() {
-        master->Disable();
+    ~IntegrationFixture() { teardown(); }
+
+    // A throwing constructor skips the destructor, and grpc_thread would never join.
+    void teardown() {
+        if (master) master->Disable();
         master.reset();
         master_channel.reset();
         master_manager.Shutdown();
@@ -222,10 +308,8 @@ struct IntegrationFixture {
     }
 
     // Poll the outstation and wait for results.
-    bool poll(std::chrono::milliseconds timeout = 5000ms) {
-        soe->clear();
-        master->ScanClasses(opendnp3::ClassField::AllClasses(), soe);
-        return soe->waitForData(timeout);
+    bool poll(std::chrono::milliseconds timeout = 10s) {
+        return scanClasses(*master, opendnp3::ClassField::AllClasses(), soe, timeout);
     }
 
     // Send a CROB via DirectOperate (default command mode).
@@ -642,18 +726,15 @@ AnalogRun runAnalogSequence(std::vector<dnp3bridge::config::PointConfig> analog_
     mcfg.link.RemoteAddr = 1024;
 
     auto soe = CollectingSOEHandler::Create();
-    auto master = channel->AddMaster("deadband-master", soe,
-                                     opendnp3::DefaultMasterApplication::Create(), mcfg);
+    auto app = std::make_shared<ReadinessMasterApplication>(std::vector<opendnp3::MasterTaskType>{});
+    auto master = channel->AddMaster("deadband-master", soe, app, mcfg);
     master->Enable();
-    std::this_thread::sleep_for(1500ms);
+    // Scans issued before the application layer opens fail with FAILURE_NO_COMMS.
+    const auto missing = app->waitReady(15s);
+    REQUIRE_MESSAGE(missing.empty(), "deadband master not ready within 15s, missing:" << missing);
 
     const auto event_classes = opendnp3::ClassField(false, true, true, true);
-    auto drain = [&] {
-        soe->clear();
-        master->ScanClasses(event_classes, soe);
-        soe->waitForData();
-        std::this_thread::sleep_for(300ms);
-    };
+    auto drain = [&] { REQUIRE(scanClasses(*master, event_classes, soe)); };
 
     outstation.updateAnalog(index, sequence.front().first, sequence.front().second);
     std::this_thread::sleep_for(200ms);
@@ -671,10 +752,7 @@ AnalogRun runAnalogSequence(std::vector<dnp3bridge::config::PointConfig> analog_
     }
 
     // Class 0 integrity read: statics carry the current value and quality.
-    soe->clear();
-    master->ScanClasses(opendnp3::ClassField(true, false, false, false), soe);
-    soe->waitForData();
-    std::this_thread::sleep_for(300ms);
+    REQUIRE(scanClasses(*master, opendnp3::ClassField(true, false, false, false), soe));
     for (const auto& r : soe->getAnalogs()) {
         if (r.index == index) {
             run.static_value = r.value;
