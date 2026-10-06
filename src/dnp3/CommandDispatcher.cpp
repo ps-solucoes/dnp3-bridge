@@ -8,35 +8,46 @@ namespace dnp3bridge::dnp3 {
 // StreamToken
 // ---------------------------------------------------------------------------
 
-CommandDispatcher::StreamToken::StreamToken(CommandDispatcher* dispatcher)
+CommandDispatcher::StreamToken::StreamToken(
+    CommandDispatcher* dispatcher,
+    ::grpc::ServerWriter<dnp3bridge::v1::CommandRequest>* writer)
     : dispatcher_{dispatcher}
+    , writer_{writer}
 {}
 
 CommandDispatcher::StreamToken::~StreamToken() {
-    if (dispatcher_) {
-        spdlog::info("Command stream writer unregistered");
-        std::lock_guard lock{dispatcher_->writer_mutex_};
-        dispatcher_->active_writer_ = nullptr;
-    }
+    release();
 }
 
 CommandDispatcher::StreamToken::StreamToken(StreamToken&& other) noexcept
     : dispatcher_{other.dispatcher_}
+    , writer_{other.writer_}
 {
     other.dispatcher_ = nullptr;
 }
 
 CommandDispatcher::StreamToken& CommandDispatcher::StreamToken::operator=(StreamToken&& other) noexcept {
     if (this != &other) {
-        // Clean up current registration if any.
-        if (dispatcher_) {
-            std::lock_guard lock{dispatcher_->writer_mutex_};
-            dispatcher_->active_writer_ = nullptr;
-        }
+        release();
         dispatcher_ = other.dispatcher_;
+        writer_ = other.writer_;
         other.dispatcher_ = nullptr;
     }
     return *this;
+}
+
+// A stream that was replaced by a newer one must not clear the newer writer:
+// Python can reconnect before the server notices the old stream is gone.
+void CommandDispatcher::StreamToken::release() {
+    if (!dispatcher_) return;
+    std::lock_guard lock{dispatcher_->writer_mutex_};
+    if (dispatcher_->active_writer_ == writer_) {
+        dispatcher_->active_writer_ = nullptr;
+        spdlog::info("Command stream writer unregistered");
+    } else {
+        spdlog::info("Stale command stream closed; newer writer stays registered");
+    }
+    dispatcher_ = nullptr;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +66,7 @@ CommandDispatcher::StreamToken CommandDispatcher::registerWriter(
         active_writer_ = writer;
     }
     spdlog::info("Command stream writer registered");
-    return StreamToken{this};
+    return StreamToken{this, writer};
 }
 
 opendnp3::CommandStatus CommandDispatcher::dispatch(dnp3bridge::v1::CommandRequest request) {

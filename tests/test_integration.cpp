@@ -614,6 +614,21 @@ TEST_CASE("Integration: bridge survives Python disconnect and reconnect") {
     }
 }
 
+TEST_CASE("Integration: a stale stream closing does not unregister its replacement") {
+    IntegrationFixture fix;
+
+    // Python reconnects before the server notices the old stream is gone.
+    auto stale = std::make_unique<CommandStream>(*fix.stub, /*auto_respond=*/true);
+    CommandStream current(*fix.stub, /*auto_respond=*/true);
+
+    stale.reset();
+    std::this_thread::sleep_for(500ms);
+
+    auto result = fix.sendCrob(0, opendnp3::OperationType::LATCH_ON);
+    CHECK(result.status == opendnp3::CommandStatus::SUCCESS);
+    CHECK(current.received().size() == 1);
+}
+
 TEST_CASE("Integration: rapid binary updates are all captured by outstation") {
     IntegrationFixture fix;
 

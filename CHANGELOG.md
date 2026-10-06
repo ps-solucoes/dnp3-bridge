@@ -6,6 +6,12 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A `StreamCommands` stream closing after Python had already reconnected
+  unregistered the new stream, so SCADA commands were rejected with
+  `NOT_SUPPORTED` until Python reconnected again.
+
 ## [0.1.0] - 2026-09-26
 
 ### Added
