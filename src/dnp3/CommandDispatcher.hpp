@@ -19,7 +19,8 @@ class CommandDispatcher {
 public:
     explicit CommandDispatcher(std::chrono::milliseconds timeout);
 
-    /// RAII token -- when destroyed, unregisters the writer.
+    /// RAII token -- when destroyed, unregisters its writer unless a newer
+    /// stream has already replaced it.
     class StreamToken {
     public:
         ~StreamToken();
@@ -31,8 +32,11 @@ public:
 
     private:
         friend class CommandDispatcher;
-        explicit StreamToken(CommandDispatcher* dispatcher);
+        StreamToken(CommandDispatcher* dispatcher,
+                    ::grpc::ServerWriter<dnp3bridge::v1::CommandRequest>* writer);
+        void release();
         CommandDispatcher* dispatcher_;
+        ::grpc::ServerWriter<dnp3bridge::v1::CommandRequest>* writer_;
     };
 
     /// Called by BridgeServiceImpl when Python opens StreamCommands.
