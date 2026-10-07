@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
     logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
     spdlog::set_default_logger(logger);
 
-    spdlog::info("dnp3-bridge v{} starting", "0.1.0");
+    spdlog::info("dnp3-bridge v{} starting", DNP3_BRIDGE_VERSION);
     if (config_path) {
         spdlog::info("Config file: {}", *config_path);
     } else {

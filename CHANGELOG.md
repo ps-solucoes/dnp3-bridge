@@ -6,6 +6,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-06
+
+### Fixed
+
+- The startup log line reported `v0.1.0` regardless of the release; the
+  version now comes from `project(VERSION)` at build time.
+
 ## [0.1.2] - 2026-10-06
 
 ### Fixed
