@@ -4,6 +4,8 @@
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
 
+#include <chrono>
+
 namespace dnp3bridge::grpc {
 
 GrpcServer::GrpcServer(std::string listen_address, BridgeServiceImpl& service)
@@ -33,7 +35,9 @@ void GrpcServer::start() {
 void GrpcServer::stop() {
     if (server_) {
         spdlog::info("gRPC server shutting down");
-        server_->Shutdown();
+        // Without a deadline Shutdown() waits forever for an open StreamCommands
+        // call; with one, calls still running at the deadline are cancelled.
+        server_->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds{1});
     }
 }
 

@@ -689,6 +689,44 @@ TEST_CASE("Integration: GetStatus reports connection state and timestamp") {
         REQUIRE(status.ok());
         CHECK(resp.last_update_timestamp_ms() > 0);
     }
+
+    // The master goes away: the outstation is still enabled, but no SCADA is
+    // connected any more.
+    fix.master.reset();
+    fix.master_channel->Shutdown();
+    fix.master_channel.reset();
+
+    auto state = dnp3bridge::v1::OUTSTATION_STATE_UNKNOWN;
+    for (int i = 0; i < 30 && state != dnp3bridge::v1::OUTSTATION_STATE_DISCONNECTED; ++i) {
+        std::this_thread::sleep_for(100ms);
+        ::grpc::ClientContext ctx;
+        dnp3bridge::v1::StatusRequest req;
+        dnp3bridge::v1::StatusResponse resp;
+        REQUIRE(fix.stub->GetStatus(&ctx, req, &resp).ok());
+        state = resp.state();
+    }
+    CHECK(state == dnp3bridge::v1::OUTSTATION_STATE_DISCONNECTED);
+}
+
+TEST_CASE("Integration: gRPC shutdown completes while a command stream is open") {
+    IntegrationFixture fix;
+
+    auto stream = std::make_unique<CommandStream>(*fix.stub, /*auto_respond=*/true);
+
+    std::atomic<bool> stopped{false};
+    std::jthread stopper([&] {
+        fix.grpc_server.stop();
+        stopped = true;
+    });
+
+    for (int i = 0; i < 30 && !stopped; ++i) {
+        std::this_thread::sleep_for(100ms);
+    }
+    CHECK(stopped);
+
+    // Without the fix Shutdown() is still waiting on the stream; closing it from
+    // the client side lets the test finish either way.
+    stream.reset();
 }
 
 // ---------------------------------------------------------------------------

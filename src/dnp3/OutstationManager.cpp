@@ -1,6 +1,7 @@
 #include "dnp3/OutstationManager.hpp"
 #include "dnp3/ForwardingCommandHandler.hpp"
 
+#include <opendnp3/channel/IChannelListener.h>
 #include <opendnp3/outstation/DatabaseConfig.h>
 #include <opendnp3/outstation/DefaultOutstationApplication.h>
 #include <opendnp3/outstation/OutstationStackConfig.h>
@@ -355,6 +356,25 @@ OutstationManager::OutstationManager(const config::AppConfig& cfg, CommandDispat
     , dispatcher_{dispatcher}
 {}
 
+namespace {
+
+/// Tracks whether a SCADA master is connected: the TCP server channel is OPEN
+/// only while a client connection is up, and drops back to OPENING when it closes.
+class ConnectionListener final : public opendnp3::IChannelListener {
+public:
+    explicit ConnectionListener(std::atomic<bool>& connected) : connected_{connected} {}
+
+    void OnStateChange(opendnp3::ChannelState state) override {
+        connected_ = (state == opendnp3::ChannelState::OPEN);
+        spdlog::info("DNP3 channel state: {}", opendnp3::ChannelStateSpec::to_human_string(state));
+    }
+
+private:
+    std::atomic<bool>& connected_;
+};
+
+} // anonymous namespace
+
 OutstationManager::~OutstationManager() {
     shutdown();
 }
@@ -368,7 +388,7 @@ void OutstationManager::start() {
         opendnp3::levels::NORMAL,
         opendnp3::ServerAcceptMode::CloseExisting,
         opendnp3::IPEndpoint(cfg_.dnp3_channel_host, cfg_.dnp3_channel_port),
-        nullptr
+        std::make_shared<ConnectionListener>(connected_)
     );
     spdlog::debug("TCP server channel created");
 
@@ -423,7 +443,6 @@ void OutstationManager::start() {
     );
 
     outstation_->Enable();
-    connected_ = true;
 
     spdlog::info("Outstation started on {}:{}", cfg_.dnp3_channel_host, cfg_.dnp3_channel_port);
 }

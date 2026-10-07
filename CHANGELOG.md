@@ -6,6 +6,18 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-06
+
+### Fixed
+
+- `GetStatus` reported `OUTSTATION_STATE_CONNECTED` as soon as the outstation
+  was enabled, whether or not a SCADA master was connected. It now follows the
+  DNP3 TCP channel: `CONNECTED` only while a master connection is open.
+- SIGTERM/SIGINT hung while a `StreamCommands` stream was open: the gRPC
+  server waited forever for the stream, kept its ports, and a restarted bridge
+  failed with "Address already in use". Shutdown now cancels calls still
+  running after 1 s.
+
 ## [0.1.1] - 2026-10-06
 
 ### Fixed
