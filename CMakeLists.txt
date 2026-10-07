@@ -1,6 +1,6 @@
 # TODO: Bump to cmake_minimum_required(VERSION 4.0) when available
 cmake_minimum_required(VERSION 3.28)
-project(dnp3-bridge VERSION 0.1.2 LANGUAGES CXX)
+project(dnp3-bridge VERSION 0.1.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -122,6 +122,8 @@ target_include_directories(dnp3-bridge PRIVATE
     "${CMAKE_SOURCE_DIR}/src"
     "${PROTO_OUT}"
 )
+
+target_compile_definitions(dnp3-bridge PRIVATE DNP3_BRIDGE_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(dnp3-bridge PRIVATE
     gRPC::grpc++
